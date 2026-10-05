@@ -21,6 +21,7 @@ class RuntimeSpec(BaseModel):
     model_name: str = Field(min_length=1)
     model_base_url: str
     agent_version: str | None = None
+    force_build: bool = False
     task_dir: Path
     output_dir: Path
     timeout_sec: int = Field(default=300, ge=1, le=3600)

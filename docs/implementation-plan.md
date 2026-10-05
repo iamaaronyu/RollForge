@@ -34,8 +34,6 @@
 
 ## 当前进展与依赖
 
-S0 工具与离线契约已实现。Claude Code 与 DeepSeek 接入选择已明确；待配置本地 API Key，并准备可用 Linux/KVM 主机。本机 M1/M2 不走官方 M3+ 嵌套虚拟化路径。
+2026-10-06：Linux/KVM 环境已部署，Claude Code + DeepSeek 的两个样例评分均为 1.0，轨迹、产物和清理已验证。详见 [基础真实验收记录](validation/2026-10-06-e2b.md)。
 
-环境不可用期间，可继续工具、任务样本和契约设计；执行验收保持待完成。高级 Sandbox、Failure Mining 与训练集成在可靠用户闭环之后开展。
-
-当前 S0 环境准备：owner 选择现有局域网 Linux 主机，配置语法验证通过，空间/内核待准备；参见 [主机准备流程](host-preparation.md)。
+当前为 8 GiB 主机上的小样例实验，不能作为一般任务容量承诺。继续补齐 S0 的零分、Agent/Verifier 故障、取消与私密凭证隔离关卡，再开展 S1 持久化执行和鉴权。高级 Sandbox、Failure Mining 与训练集成在可靠用户闭环之后开展。

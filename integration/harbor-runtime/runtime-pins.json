@@ -24,18 +24,27 @@
         "size": 26979
       }
     },
-    "status": "配置待部署验证"
+    "status": "基础真实链路验收通过，受限内存、并发 1"
   },
-  "real_execution_validated": false,
+  "real_execution_validated": true,
   "agent": {
     "name": "claude-code",
     "version": "2.1.81",
-    "real_execution_validated": false
+    "real_execution_validated": true
   },
   "model": {
     "protocol": "anthropic-messages",
     "model_id": "deepseek-flash",
     "base_url": "https://api.deepseek.com/anthropic",
     "mutable_alias": true
+  },
+  "s0_acceptance_complete": false,
+  "validation_report": "docs/validation/2026-10-06-e2b.md",
+  "sample_runtime": {
+    "cpu_count": 2,
+    "memory_mb": 512,
+    "host_hugepages": 1024,
+    "default_free_disk_size_mb": 2048,
+    "max_length_hours": 24
   }
 }

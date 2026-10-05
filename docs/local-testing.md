@@ -14,6 +14,8 @@ Linux 主机检查项：KVM/TUN 设备、4 KiB 内核页、cgroup v2；ARM64 还
 
 ```sh
 python3 scripts/check_e2b_host.py
+# 已明确选择低内存实验时：
+python3 scripts/check_e2b_host.py --allow-low-memory
 ```
 
 该脚本只读取宿主信息，不安装软件、不修改内核或网络。通过不代表 E2B 已启动；它用于发现缺少 KVM、页大小/内核不合适或资源不足。
@@ -80,3 +82,17 @@ docker compose exec -T ready cat /run/e2b/sdk.env > sdk.local.env
 当前 Mac 的 Compose 2.20 低于部署文件要求；Compose 配置验证应在目标 Linux 的 2.32 版本上执行。
 
 owner 已选择继续准备现有主机，详细步骤见 [现有主机准备流程](host-preparation.md)。
+
+## 可选的宿主 HTTP 代理
+
+运行时文件与基础镜像下载受网络影响时，可使用 infra/e2b/compose.host-proxy.example.yaml 作为部署目录的 compose.override.yaml，并通过 ROLLFORGE_HOST_HTTP_PROXY 指定已有代理。覆盖只作用于 fetch-artifacts 和 orchestrator，本地服务和 E2B 私网 VM 网段加入 NO_PROXY；不会自动给 Sandbox 注入代理。覆盖配置也应记录在部署证据中。
+
+未认证的 5008 控制端口只允许本机访问，SDK 模板上传使用 SSH 隧道。当前测试机已经加入带 rollforge-e2b-control 注释的 INPUT 规则；该规则不保证重启后持久化，重启后需复检。
+
+## Harbor 与 Embed 的实测兼容配置
+
+Harbor 0.24.0 原生创建 E2B Sandbox 时申请 86400 秒；Embed 初始团队限额为 1 小时。首次 Harbor 模板构建前，使用 infra/e2b/harbor-local-limits.sql 给 local-dev-team 设置 24 小时限额与 2048 MiB 默认空闲磁盘，重启 API 刷新缓存。SQL 从实际 team_limits 视图复制其他限额到 project_limits 覆盖表，不修改全局 tier。
+
+默认 512 MiB 空闲磁盘实测无法容纳 Claude Code 所需的 nodejs/npm 依赖。限额变更不会扩容已保存的模板快照；已有小磁盘快照需要通过 SDK skip_cache=True 重建。Harbor 的 --force-build 仅强制发起构建，不保证跳过底层层缓存。模板准备不改变 Harbor 对 Trial Sandbox 创建与清理的所有权。
+
+2026-10-06 已完成部署、官方 smoke 和两个真实样例，评分均为 1.0。当前状态以 [验收记录](validation/2026-10-06-e2b.md) 为准；上面的 2026-10-05 资源缺口属于历史检查。

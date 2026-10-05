@@ -32,6 +32,9 @@ def test_real_task_and_trial_config(task_name):
     assert config.environment.delete is True
     assert config.agent.kwargs == {"api_base": spec.model_base_url, "max_turns": 10}
     assert callable(Trial.create)
+    assert config.environment.force_build is False
+    rebuilt = build_trial_config(spec.model_copy(update={"force_build": True}), "rebuild")
+    assert rebuilt.environment.force_build is True
 
 
 @pytest.mark.parametrize(
@@ -83,3 +86,10 @@ def test_embed_sdk_endpoints_and_claude_options(monkeypatch):
     assert options.max_turns == 10
     assert options.disable_web_search is True
     assert kwargs["version"] == "2.1.81"
+
+
+def test_real_harbor_e2b_provider_can_load_pinned_sdk():
+    from harbor.environments.e2b import _HAS_E2B, E2BEnvironment
+
+    assert _HAS_E2B is True
+    assert E2BEnvironment.type().value == "e2b"

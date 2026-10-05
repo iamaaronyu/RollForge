@@ -68,9 +68,9 @@ uv run --project integration/harbor-runtime python examples/run_one_trial.py \
   --task examples/tasks/coding-task --run
 ```
 
-`--run` 会创建真实 Sandbox、执行 Agent、调用模型并验证结果；S0 尚无自动重试。超时会取消 Trial，但还需独立检查是否存在孤儿 Sandbox。
+`--run` 会创建真实 Sandbox、执行 Agent、调用模型并验证结果；平台 S0 尚无自动重试；Harbor Provider 内部可能重试部分调用。超时会取消 Trial，但还需独立检查是否存在孤儿 Sandbox。
 
-输出与 rollforge-evidence.json 保存在 Git 忽略的 outputs/spike 下，新输出目录权限为 0700。原始日志和产物可能包含敏感内容，只在本地审查。工具不会自动上传证据。
+输出与 rollforge-evidence.json 保存在 Git 忽略的 outputs/spike 下，输出根目录权限强制为 0700。原始日志和产物可能包含敏感内容，只在本地审查。工具不会自动上传证据。
 
 证据包含实际依赖版本、Task digest、原生输出 Manifest、版本化摘要。Manifest 在证据文件写入前计算，不包含证据文件自身。缺失 token/timing 保持 null。
 
@@ -82,6 +82,14 @@ uv run --project integration/harbor-runtime python examples/run_one_trial.py \
 
 分别收集成功、零分、Agent 异常、Verifier 异常。检查失败阶段、部分日志、评分是否存在和 Sandbox 是否销毁。
 
-示例 Dockerfile 使用开发用浮动镜像标签；正式复现验收前固定 digest。记录 Runtime 提交、SDK/Agent 版本与服务商模型版本说明。
+示例 Dockerfile 已固定 Python 基础镜像 digest，由官方 registry 返回的内容摘要校验。记录 Runtime 提交、SDK/Agent 版本与服务商模型版本说明。
 
 真实 E2B、模型、Agent、Verifier 和清理全部有证据后才完成 S0。S1 持久化与鉴权契约准备好之前，Hub 不开放执行入口。
+
+## 失败模板的恢复
+
+实测失败构建可能留下 alias，但没有可创建 Sandbox 的 default 标签。此时仅判断 alias_exists 不足以认定模板可用。修复资源或网络原因后，用运行入口的 `--force-build` 调用 Harbor 原生重建配置，不删除已有模板。
+
+当前公开小样例请求 512 MiB Sandbox 内存，用于 8 GiB 主机上的并发 1 实验；模板构建可能同时保留多个 VM。该配置不代表一般代码任务的资源建议，正式任务需单独配置内存并验证。
+
+当前样例 Dockerfile 通过官方 npm 包预装 Claude Code 2.1.81，Harbor 会检查版本后复用；没有绕过 Harness。原因是测试网无法连接原生 bootstrap 域名，而 npm 固定包可达。部署限额和已有模板缓存处理见 local-testing.md。

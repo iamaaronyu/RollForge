@@ -2,9 +2,11 @@
 
 开源 Agent Rollout 与评测平台。复用 Harbor 执行任务、E2B 提供 Sandbox，自研实验控制面与轨迹、产物、评分数据层。
 
-**当前状态：S0 工具已实现，真实运行验收尚未完成。** 已提供健康接口、共享 Schema、状态机、前端基础页，以及独立的 Harbor/E2B 运行环境、预检和结果解析。Hub 的 Job 执行、持久化租约、Registry 与生产结果存储尚未实现。
+**当前状态：S0 基础真实链路已验收，完整 S0 关卡仍在进行。** 已提供健康接口、共享 Schema、状态机、前端基础页，以及独立的 Harbor/E2B 运行环境、预检和结果解析。Hub 的 Job 执行、持久化租约、Registry 与生产结果存储尚未实现。
 
 首个验证组合为 **Claude Code + DeepSeek V4.1 Flash + 自托管 E2B**。默认使用 DeepSeek 官方 Anthropic 兼容接口；其他服务商必须单独确认协议与模型标识。
+
+两个公开样例已通过真实 Claude Code + DeepSeek + E2B 执行，评分均为 1.0；详见 [2026-10-06 验收记录](docs/validation/2026-10-06-e2b.md)。
 
 ## 快速启动
 

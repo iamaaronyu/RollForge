@@ -32,7 +32,9 @@ def build_trial_config(spec: RuntimeSpec, trial_name: str):
             override_timeout_sec=spec.timeout_sec,
             override_setup_timeout_sec=spec.timeout_sec,
         ),
-        environment=EnvironmentConfig(**E2BProvider().environment_config()),
+        environment=EnvironmentConfig(
+            **E2BProvider().environment_config(), force_build=spec.force_build
+        ),
     )
 
 

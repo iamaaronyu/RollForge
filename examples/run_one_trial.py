@@ -18,10 +18,12 @@ def main() -> int:
     parser.add_argument("--task", type=Path, default=Path("examples/tasks/hello-task"))
     parser.add_argument("--output", type=Path, default=Path("outputs/spike"))
     parser.add_argument("--run", action="store_true", help="Create sandbox and call real inference")
+    parser.add_argument("--force-build", action="store_true", help="通过 Harbor 重建模板")
     args = parser.parse_args()
     load_dotenv(args.env_file, override=False)
     try:
         spec = spec_from_env(os.environ, args.task, args.output)
+        spec = spec.model_copy(update={"force_build": args.force_build})
     except ValidationError as exc:
         # Pydantic errors can contain input values. Only report field names.
         fields = [".".join(str(part) for part in error["loc"]) for error in exc.errors()]
@@ -58,6 +60,8 @@ def main() -> int:
     endpoint_name = "ANTHROPIC_BASE_URL" if spec.agent == "claude-code" else "OPENAI_BASE_URL"
     os.environ[endpoint_name] = spec.model_base_url
     spec.output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # Existing output roots can predate this CLI and contain sensitive raw logs.
+    spec.output_dir.chmod(0o700)
     try:
         from rollforge_harbor_adapter.native import run_native_trial
         from rollforge_harbor_adapter.results import summarize_result

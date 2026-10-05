@@ -1,5 +1,6 @@
 """只读检查 E2B Embed Linux 宿主；不会修改内核、网络或软件。"""
 
+import argparse
 import json
 import os
 import platform
@@ -22,7 +23,7 @@ def version(value: str) -> tuple[int, ...]:
     return tuple(int(part or 0) for part in match.groups()) if match else (0, 0, 0)
 
 
-def inspect_host() -> dict:
+def inspect_host(allow_low_memory: bool = False) -> dict:
     system, arch = platform.system(), platform.machine()
     errors, recommendations = [], []
     memory_gib = None
@@ -54,7 +55,11 @@ def inspect_host() -> dict:
     if not daemon:
         errors.append("Docker daemon 未就绪或当前用户无权限")
     if memory_gib is not None and memory_gib < 12:
-        errors.append("可用主机内存低于官方建议的 12 GiB")
+        message = "主机总内存低于官方建议的 12 GiB"
+        if allow_low_memory:
+            recommendations.append(message + "；仅作为降低 HugePages、并发 1 的受限实验")
+        else:
+            errors.append(message)
     if free_gib < 20:
         errors.append("空闲磁盘低于 20 GiB")
     if (os.cpu_count() or 0) < 4 or (memory_gib or 0) < 16 or free_gib < 60:
@@ -71,10 +76,14 @@ def inspect_host() -> dict:
         "errors": errors,
         "recommendations": recommendations,
         "real_e2b_started": False,
+        "low_memory_experiment": allow_low_memory,
     }
 
 
 if __name__ == "__main__":
-    report = inspect_host()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--allow-low-memory", action="store_true", help="显式允许受限内存实验")
+    args = parser.parse_args()
+    report = inspect_host(allow_low_memory=args.allow_low_memory)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     raise SystemExit(1 if report["errors"] else 0)

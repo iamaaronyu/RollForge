@@ -1,0 +1,13 @@
+# 可选：只为宿主上的下载/模板管理服务配置已有 HTTP 代理。
+# 复制到部署目录的 compose.override.yaml，并设置 ROLLFORGE_HOST_HTTP_PROXY。
+services:
+  fetch-artifacts:
+    environment:
+      HTTP_PROXY: ${ROLLFORGE_HOST_HTTP_PROXY:?请设置已有宿主 HTTP 代理地址}
+      HTTPS_PROXY: ${ROLLFORGE_HOST_HTTP_PROXY:?请设置已有宿主 HTTP 代理地址}
+      NO_PROXY: localhost,.localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+  orchestrator:
+    environment:
+      HTTP_PROXY: ${ROLLFORGE_HOST_HTTP_PROXY:?请设置已有宿主 HTTP 代理地址}
+      HTTPS_PROXY: ${ROLLFORGE_HOST_HTTP_PROXY:?请设置已有宿主 HTTP 代理地址}
+      NO_PROXY: localhost,.localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
