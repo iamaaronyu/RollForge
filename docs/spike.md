@@ -93,3 +93,15 @@ uv run --project integration/harbor-runtime python examples/run_one_trial.py \
 当前公开小样例请求 512 MiB Sandbox 内存，用于 8 GiB 主机上的并发 1 实验；模板构建可能同时保留多个 VM。该配置不代表一般代码任务的资源建议，正式任务需单独配置内存并验证。
 
 当前样例 Dockerfile 通过官方 npm 包预装 Claude Code 2.1.81，Harbor 会检查版本后复用；没有绕过 Harness。原因是测试网无法连接原生 bootstrap 域名，而 npm 固定包可达。部署限额和已有模板缓存处理见 local-testing.md。
+
+## 真实故障验收
+
+在独占、无活动 Sandbox 的自托管测试环境执行：
+
+```bash
+UV_CACHE_DIR=.cache/uv uv run --project integration/harbor-runtime python examples/run_fault_acceptance.py --run
+```
+
+脚本顺序验证有效零分、Verifier 错误与超时、Agent 超时与 CLI 错误、Verifier 阶段取消。它会调用模型 API，并在每项后检查剩余 Sandbox；清理失败后停止创建新 Sandbox，不接管或删除其他运行。未传 --run 时不执行。原始输出和证据位于 Git 忽略的 outputs/spike/faults-*，仅非敏感摘要可公开。
+
+2026-10-06 六项真实验收通过，详细故障注入与边界见 [验收记录](validation/2026-10-06-e2b.md)。
