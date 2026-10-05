@@ -19,6 +19,8 @@ def build_trial_config(spec: RuntimeSpec, trial_name: str):
         if spec.agent == "terminus-2"
         else {"version": spec.agent_version}
     )
+    if spec.agent == "claude-code":
+        kwargs.update(max_turns=10, disable_web_search=True)
     return TrialConfig(
         task=TaskConfig(path=spec.task_dir.resolve()),
         trial_name=trial_name,

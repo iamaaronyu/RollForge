@@ -5,7 +5,7 @@ description = "Isolated, pinned Harbor runtime validation environment"
 requires-python = ">=3.12"
 dependencies = [
   "harbor[e2b]==0.24.0",
-  "e2b==2.25.0",
+  "e2b==2.46.0",
   "rollforge-harbor-adapter",
   "python-dotenv>=1.2,<2",
   "pytest>=9,<10",

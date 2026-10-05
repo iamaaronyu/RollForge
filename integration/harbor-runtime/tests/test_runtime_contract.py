@@ -56,7 +56,7 @@ def test_installed_agent_config_pins_cli_version(agent, protocol, version):
 
 
 def test_pinned_runtime_versions():
-    assert runtime_versions() == {"harbor": "0.24.0", "e2b": "2.25.0"}
+    assert runtime_versions() == {"harbor": "0.24.0", "e2b": "2.46.0"}
 
 
 def test_e2b_sdk_uses_self_host_environment(monkeypatch):
@@ -67,3 +67,19 @@ def test_e2b_sdk_uses_self_host_environment(monkeypatch):
     config = ConnectionConfig()
     assert config.api_url == "https://api.sandbox.example.invalid"
     assert config.api_key == os.environ["E2B_API_KEY"]
+
+
+def test_embed_sdk_endpoints_and_claude_options(monkeypatch):
+    from harbor.agents.installed.claude_code import ClaudeCodeOptions
+    from rollforge_harbor_adapter.preflight import spec_from_env
+
+    monkeypatch.setenv("E2B_API_URL", "http://127.0.0.1:3300")
+    monkeypatch.setenv("E2B_SANDBOX_URL", "http://127.0.0.1:3302")
+    config = ConnectionConfig()
+    assert config.api_url == "http://127.0.0.1:3300"
+    spec = spec_from_env({}, ROOT / "examples/tasks/hello-task", ROOT / "outputs/spike")
+    kwargs = build_trial_config(spec, "claude-contract").agent.kwargs
+    options = ClaudeCodeOptions.model_validate(kwargs)
+    assert options.max_turns == 10
+    assert options.disable_web_search is True
+    assert kwargs["version"] == "2.1.81"

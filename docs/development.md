@@ -1,22 +1,17 @@
-# Development and publication
+# 开发与发布规范
 
-Install using the committed uv.lock and npm package-lock.json. Run `make check`
-before committing; CI runs Python lint/format/tests and frontend typecheck/build.
-Business features need tests appropriate to their invariants. Execution changes also
-need real runtime acceptance. Check endpoints separately for liveness and readiness;
-readiness currently verifies only the database, because other data services are not used yet.
+依赖使用已提交的 uv.lock 和 package-lock.json。提交前运行 `make check`；CI 验证 Python lint、格式、测试，以及前端类型与构建。运行环境改动还需 `make runtime-check`。
 
-## Periodic commits
+测试应覆盖业务不变量和错误路径；主链集成改动必须补充真实运行验收。离线依赖契约检查不算真实 Rollout。存活与就绪接口分开；当前就绪检查仅验证数据库连通性。
 
-A local Codex chat schedule checks this checkout every four hours and commits/pushes
-verified public-safe changes. No changes means no commit. This schedule is configured
-in the app, not a server-side GitHub workflow. Keep the desktop app and machine running;
-Git authentication and network access must remain available.
+文档与面向用户的说明默认中文，代码标识符、协议名称与 API 字段不随翻译改变。
 
-Review diff and selected paths, then run checks. Never use an indiscriminate `git add .`
-for unattended publication. Exclude credentials, `.env`, original internal planning
-inputs, datasets, raw trajectories, logs and generated outputs. If checks fail or there
-is a conflict, preserve work and report the issue. Never force push or bypass checks.
+## 定期提交
 
-GitHub CI checks commits already pushed; it cannot upload edits sitting on a laptop.
-License selection remains an owner decision; no license has been added by the scaffold.
+桌面应用中的本聊天定时任务每 4 小时检查此工作目录，验证后正常 commit/push；没有变化不生成提交。电脑和应用必须运行，Git 网络与 SSH 认证必须可用。
+
+定时任务不是 GitHub 服务端任务。GitHub CI 只能检查已推送的提交，不能上传仍在本机的编辑。
+
+提交前检查 diff 并明确选择文件，不用无差别 `git add .` 发布。排除密钥、`.env`、原始内部需求与分析、数据集、轨迹、日志和运行产物。检查失败或冲突时保留工作并报告，禁止强推、跳过检查或自动改代码绕过错误。
+
+许可证由仓库 owner 决定，目前尚未添加。

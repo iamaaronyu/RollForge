@@ -1,41 +1,41 @@
-# Implementation plan and delivery workflow
+# 实施计划与交付流程
 
-Start date: 2026-10-05. Estimates use effective work weeks, not calendar promises.
+启动日期：2026-10-05。排期按有效工作周估算，不作为日历工期承诺。
 
-## Milestones
+## 技术选择
 
-| Milestone | Deliverables | Acceptance gate | Estimate |
+首个 Agent：Claude Code；首个模型：DeepSeek V4.1 Flash；协议：Anthropic Messages；Sandbox：自托管 E2B。控制面保留 macOS 开发能力，E2B 使用具备 KVM 的 Linux 测试环境。
+
+## 阶段计划
+
+| 阶段 | 交付内容 | 验收关卡 | 估算 |
 |---|---|---|---|
-| S0 | pinned runtime, preflight, two tasks, real single-trial runner, native result validation | real self-hosted E2B + agent + inference + verifier, failure samples, cleanup | 1–2 weeks |
-| S1 | immutable snapshots, Job/Trial/Execution tables, authenticated APIs, transactional leases, fencing, bounded retry/recovery | real PostgreSQL two-worker race, expired owner rejected, idempotent completion | 2 weeks |
-| S2 | object manifests, raw/normalized trajectories, retryable uploads, Trial viewer | diagnose a failed trial entirely through Portal | 1 week |
-| S3 | revisions/registry, deterministic planner, FIFO/capacity, Create Job and Job viewer | 100 logical trials, progressively validated 1/5/10/20 concurrency | 2 weeks |
-| S4 | cancel/cleanup, recovery tests, telemetry, deployment/runbook | restart/429/upload failure tests and user acceptance | 1–2 weeks |
+| S0 | 固定运行依赖、预检、两个示例任务、单 Trial 运行与结果校验 | 真实 E2B/模型/Agent/Verifier、失败样本及资源清理 | 1–2 周 |
+| S1 | 不可变快照、Job/Trial/Execution、鉴权 API、事务租约、fencing、Retry/恢复 | 真实 PostgreSQL 双 Worker 竞争、旧执行提交被拒绝、幂等完成 | 2 周 |
+| S2 | 对象 Manifest、原始与归一化轨迹、可恢复上传、Trial 页面 | 网页可完整定位失败原因 | 1 周 |
+| S3 | Revision/Registry、确定性展开、FIFO/容量、Job 创建与查看 | 100 个逻辑 Trial；按资源逐级验证并发 | 2 周 |
+| S4 | 取消清理、故障测试、监控、运行手册 | 重启、429、上传失败和用户验收达标 | 1–2 周 |
 
-The estimate assumes two backend/platform engineers and one frontend/full-stack
-engineer with infrastructure support. AI assistance does not remove environment
-provisioning, protocol compatibility or fault-testing dependencies.
+估算假设：2 名后端/平台工程师、1 名前端/全栈工程师，基础设施团队提供支持。AI 辅助不能替代环境准备、协议验证和故障演练时间。
 
-## Per-feature workflow
+## 每项功能的完整流程
 
-1. Read actual pinned upstream interfaces and the relevant repo rules.
-2. Record the requirement, invariant, dependency and acceptance criterion.
-3. Define shared schema and state semantics; review every consumer.
-4. Add a reversible database migration where persistence changes.
-5. Implement service transactions, authorization and error paths.
-6. Expose API contracts and generate consumer types from OpenAPI.
-7. Run unit/integration tests; use real PostgreSQL for locking invariants.
-8. Run real Harbor/E2B/inference acceptance for main-chain changes.
-9. Build UI against the accepted API rather than inventing states.
-10. Run `make check`, inspect the diff for public suitability, commit and normal push.
-11. Update the milestone evidence and limitations. Never mark missing real E2E as passed.
+1. 读取固定版本的真实依赖接口和仓库开发规则。
+2. 明确需求、业务不变量、依赖条件和验收标准。
+3. 定义共享 Schema、状态语义，并检查所有消费者。
+4. 持久化变更先增加可回退迁移。
+5. 实现服务事务、权限与错误处理。
+6. 开放 API，并从 OpenAPI 生成消费者类型。
+7. 运行单元/集成测试；锁与并发不变量使用真实 PostgreSQL 验证。
+8. 主链变更运行真实 Harbor/E2B/模型验收。
+9. 前端对接已确认的 API，不自行发明状态。
+10. 运行 make check；运行依赖改动追加 make runtime-check；审查公开适宜性，提交并正常推送。
+11. 更新阶段证据和限制，不能把缺少真实 E2E 标为通过。
 
-## Current dependency gate
+## 当前进展与依赖
 
-Runtime deployment, model endpoint protocol and first Harness need non-sensitive
-configuration from the owner. Credentials must be configured locally, never in chat
-or public commits. While these are unavailable, implementation may cover tooling,
-fixtures and contract design; execution acceptance remains pending.
+S0 工具与离线契约已实现。Claude Code 与 DeepSeek 接入选择已明确；待配置本地 API Key，并准备可用 Linux/KVM 主机。本机 M1/M2 不走官方 M3+ 嵌套虚拟化路径。
 
-Advanced pause/resume/fork, analytics mining and training integration are deferred
-until the reliable user experiment loop passes the MVP gate.
+环境不可用期间，可继续工具、任务样本和契约设计；执行验收保持待完成。高级 Sandbox、Failure Mining 与训练集成在可靠用户闭环之后开展。
+
+当前 S0 环境准备：owner 选择现有局域网 Linux 主机，配置语法验证通过，空间/内核待准备；参见 [主机准备流程](host-preparation.md)。

@@ -1,1 +1,1 @@
-See [AGENTS.md](AGENTS.md) for repository development instructions.
+仓库开发规则见 [AGENTS.md](AGENTS.md)。

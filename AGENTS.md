@@ -1,17 +1,15 @@
-# RollForge development rules
+# RollForge 开发规则
 
-- Read docs/architecture.md and docs/development.md before implementing features.
-- Shared domain contracts live only in packages/schemas. Generate frontend contracts
-  from OpenAPI once business APIs exist; never invent independent status fields.
-- Inspect pinned Harbor source before integration changes. No fabricated APIs or core forks.
-- Harbor owns sandbox lifecycle; the platform supplies configuration and extensions.
-- Distinguish logical Trial/attempt from physical Execution/retry.
-- State changes require state-machine validation and transactional lease ownership.
-- PostgreSQL is authoritative. Redis must not be the only durable task record.
-- Store large trajectory/artifact/log objects in object storage, not database rows.
-- Keep credentials out of config snapshots, logs, fixtures and public commits.
-- Main-chain integration changes require real Harbor/E2B/inference validation;
-  mocks do not qualify. Report missing environment access explicitly.
-- Run make check before commits. Do not automatically repair unrelated user changes.
-- User authorizes periodic normal commits/pushes to origin. Never force push,
-  rewrite history, publish local planning inputs or resolve conflicts unattended.
+- 开发前读取 docs/architecture.md 和 docs/development.md。
+- 文档和面向用户的说明默认使用中文；API、代码标识符和协议名称保持稳定。
+- 共享领域契约只定义在 packages/schemas。业务 API 实现后从 OpenAPI 生成前端类型，不独立发明状态字段。
+- 修改集成前读取固定版本 Harbor 的真实源码，不虚构接口，不 Fork Core。
+- Harbor 负责 Sandbox 生命周期；平台只提供经过验证的配置和扩展。
+- 区分逻辑 Trial/Attempt 与物理 Execution/Retry。
+- 状态变化必须经过状态机，并在事务中校验租约所有权。
+- PostgreSQL 是权威状态源；Redis 不能成为唯一持久化任务记录。
+- 轨迹、产物、日志等大对象放入对象存储，不直接放入数据库行。
+- 凭证不能出现在配置快照、日志、公开测试样本或提交中。
+- 主链集成改动需要真实 Harbor/E2B/模型验收；Mock 不算真实验收。缺少环境时明确记录。
+- 提交前运行 make check；运行环境改动同时运行 make runtime-check。不要自动修复无关用户改动。
+- 用户已授权定期正常 commit/push。禁止 force push、重写历史、发布原始内部规划文件或无人值守解决冲突。

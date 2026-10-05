@@ -5,7 +5,37 @@
     "inspected_source": "published PyPI wheel",
     "wheel_sha256": "23b7ba616a3aae4eff561ced5e2c51c7186f2981e53a770dea9c689d3969877c"
   },
-  "e2b_sdk": {"version": "2.25.0"},
-  "e2b_runtime": {"version": null, "status": "deployment information required"},
-  "real_execution_validated": false
+  "e2b_sdk": {
+    "version": "2.46.0"
+  },
+  "e2b_runtime": {
+    "compose_revision": "08436994a1c0bd48a7f03a08c020bf7a4a673dfa",
+    "files": {
+      "compose.yaml": {
+        "sha256": "eab149fa2908276f2c8764a72fa2c1ff21958a1c7877d5fdd1f7fc622e783c36",
+        "size": 39849
+      },
+      ".env": {
+        "sha256": "8ba4df5a2890de616b48376f744b2588cdcacc4f252fdc524174faeaaa3628dd",
+        "size": 4091
+      },
+      "README.md": {
+        "sha256": "0edacecfa178edc5ab4038b419d1c2a85240534eea0e4c33dbbfa780722110ad",
+        "size": 26979
+      }
+    },
+    "status": "配置待部署验证"
+  },
+  "real_execution_validated": false,
+  "agent": {
+    "name": "claude-code",
+    "version": "2.1.81",
+    "real_execution_validated": false
+  },
+  "model": {
+    "protocol": "anthropic-messages",
+    "model_id": "deepseek-flash",
+    "base_url": "https://api.deepseek.com/anthropic",
+    "mutable_alias": true
+  }
 }
