@@ -17,5 +17,7 @@ Versioned original outputs are the source for viewer projections. Missing usage 
 reasoning fields are unknown, not zero or invented. Reward zero is a valid evaluation
 result, not an infrastructure failure. Metrics must separate score coverage from pass rate.
 
-No real runtime dependency is installed yet: selecting compatible Harbor/E2B versions
-and model protocol is the next milestone, not an assumed implementation detail.
+The isolated S0 runtime pins Harbor 0.24.0 and E2B SDK 2.25.0. Their actual Task,
+TrialConfig, Trial.create and SDK configuration contracts are checked offline.
+Self-hosted runtime deployment, inference protocol and real execution still require
+environment-specific evidence; the Hub execution capability remains disabled.

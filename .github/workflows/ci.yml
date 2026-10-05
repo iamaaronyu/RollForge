@@ -34,3 +34,13 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
+  runtime-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+      - run: uv sync --project integration/harbor-runtime --python 3.12 --locked
+      - run: make runtime-check

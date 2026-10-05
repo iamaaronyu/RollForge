@@ -1,0 +1,11 @@
+{
+  "harbor": {
+    "version": "0.24.0",
+    "python": ">=3.12",
+    "inspected_source": "published PyPI wheel",
+    "wheel_sha256": "23b7ba616a3aae4eff561ced5e2c51c7186f2981e53a770dea9c689d3969877c"
+  },
+  "e2b_sdk": {"version": "2.25.0"},
+  "e2b_runtime": {"version": null, "status": "deployment information required"},
+  "real_execution_validated": false
+}

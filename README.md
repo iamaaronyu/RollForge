@@ -3,15 +3,16 @@
 Open agent rollout and evaluation platform. Reuse Harbor for execution and E2B for
 sandboxing; build the experiment control plane and rollout data layer around them.
 
-**Status: development scaffold.** Health endpoints, shared schemas, state-machine
-validation, workspace packaging and a web landing page are implemented. Job execution,
-lease persistence, registries, results storage and real runtime integration are not yet
-implemented. This is not a production deployment.
+**Status: S0 runtime spike implementation; real execution acceptance pending.**
+Health endpoints, shared schemas, state-machine validation and a web landing page
+are implemented. An isolated pinned Harbor/E2B runner, preflight and native result
+projection are available. Job execution through Hub, lease persistence, registries
+and production results storage are not yet implemented.
 
 ## Quick start
 
 Requirements: Python 3.11+, uv, Node.js 20.9+, npm, Docker Compose (local services).
-Harbor's Python requirement will be pinned separately during the runtime spike.
+The isolated Harbor 0.24.0 runtime requires Python 3.12+.
 
 ```sh
 cp .env.example .env
@@ -53,5 +54,6 @@ tests/                   unit / integration / real E2E criteria
 ```
 
 See [architecture](docs/architecture.md), [development](docs/development.md),
-[compatibility spike](docs/compatibility.md) and [roadmap](docs/roadmap.md).
+[compatibility spike](docs/compatibility.md), [spike commands](docs/spike.md),
+[implementation plan](docs/implementation-plan.md) and [roadmap](docs/roadmap.md).
 A license has not yet been selected; public visibility does not grant a software license.

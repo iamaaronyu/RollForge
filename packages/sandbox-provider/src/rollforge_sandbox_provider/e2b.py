@@ -6,4 +6,5 @@ class E2BProvider:
     capabilities = SandboxCapabilities()
 
     def environment_config(self) -> dict[str, object]:
-        raise NotImplementedError("Validate the pinned Harbor/E2B self-host configuration in S0")
+        # SDK reads E2B_DOMAIN/E2B_API_KEY at runtime; Hub never creates the sandbox.
+        return {"type": "e2b", "delete": True}

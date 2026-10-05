@@ -39,7 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "name": "RollForge",
             "version": "0.1.0",
-            "stage": "scaffold",
+            "stage": "runtime-spike",
             "execution_enabled": False,
             "message": "Harbor/E2B compatibility spike is required before enabling execution.",
         }

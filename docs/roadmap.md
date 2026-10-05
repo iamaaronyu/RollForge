@@ -9,4 +9,7 @@
 5. S4: cancellation/cleanup, fault tests, monitoring and MVP operational acceptance.
 6. Later: enterprise governance, comparison, data mining and training exports.
 
-No current feature claims real rollout execution. Pause/resume/fork and RL are deferred.
+S0 tooling is implemented: pinned runtime, input validation, preflight, two example
+tasks, native runner and result projection. Real rollout acceptance remains pending.
+See implementation-plan.md for the full delivery workflow and spike.md for execution.
+Pause/resume/fork and RL are deferred.

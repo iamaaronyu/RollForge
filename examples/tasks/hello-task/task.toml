@@ -1,0 +1,17 @@
+schema_version = "1.4"
+artifacts = ["/app/answer.txt"]
+
+[metadata]
+name = "hello-task"
+purpose = "rollforge-s0"
+
+[agent]
+timeout_sec = 300
+
+[verifier]
+timeout_sec = 60
+
+[environment]
+cpus = 2
+memory_mb = 2048
+build_timeout_sec = 600
