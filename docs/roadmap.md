@@ -7,6 +7,6 @@
 5. **S4**：取消与清理、故障测试、监控、部署与运行手册，完成 MVP 验收。
 6. 后续：企业治理、实验比较、数据挖掘和训练导出。
 
-S0 工具代码已经实现：独立运行环境、配置预检、两个示例任务、原生运行入口和结果解析。真实执行验收仍待模型凭证与 Linux/KVM 部署。
+2026-10-06：S0 在可信 LAN、并发 1 范围完成；S1 前五个切片、真实单 Trial Worker 主链与存储/提交恢复已有验收证据。S2 的 Manifest、原始输出与上传恢复已提前实现；最小业务页面、Viewer、Registry 和持续调度仍待完成。正式入口保持关闭。当前进展及细化顺序见 [开发进展与后续计划](progress-and-next-plan.md)。
 
 完整流程见 implementation-plan.md，运行命令见 spike.md，本地部署要求见 local-testing.md。高级 Pause/Resume/Fork 和 RL 继续后移。

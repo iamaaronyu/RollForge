@@ -2,7 +2,7 @@
 
 开源 Agent Rollout 与评测平台。复用 Harbor 执行任务、E2B 提供 Sandbox，自研实验控制面与轨迹、产物、评分数据层。
 
-**当前状态：S0 基础真实链路已验收，完整 S0 关卡仍在进行；S1 控制面基础并行开发。** 已提供健康接口、共享 Schema、状态机、前端基础页，以及独立的 Harbor/E2B 运行环境、预检和结果解析。单 Trial 数据库迁移、事务租约服务和鉴权 API/SDK 已通过真实 PostgreSQL 验收；控制面写接口默认关闭，真实 Worker、Registry 与生产结果存储尚未接通。
+**当前状态：S0 受限环境验收完成，S1 前五个切片及真实单 Trial 主链已通过，业务页面与持续调度待开发。** 已实现 PostgreSQL 执行权、鉴权 API/SDK、固定 Runtime Worker、不可变对象存储与提交恢复；真实评分、零分、协作取消后 Retry 通过。正式执行入口仍关闭，实验网关不满足生产条件，本轮 Linux 临时网络策略恢复待复核。完整进展与后续顺序见 [开发进展与后续计划](docs/progress-and-next-plan.md)。
 
 首个验证组合为 **Claude Code + DeepSeek V4.1 Flash + 自托管 E2B**。默认使用 DeepSeek 官方 Anthropic 兼容接口；其他服务商必须单独确认协议与模型标识。
 
@@ -31,7 +31,7 @@ make scheduler-check
 uv run alembic -c apps/hub-api/alembic.ini current
 ```
 
-迁移已包含 Job/Trial/Execution 表；应用前确认目标数据库与备份。Worker/Scheduler 目前仅支持 `--check`，不会模拟真实 Job 执行。S1 数据库专项验收见 [验收记录](docs/validation/2026-10-06-s1-postgres.md)。
+迁移已包含 Job/Trial/Execution 表；应用前确认目标数据库与备份。Worker 已支持受控单次执行与恢复，配置和验收边界见 [Worker 说明](docs/worker.md)；Scheduler 目前仍仅支持 `--check`。S1 数据库专项验收见 [验收记录](docs/validation/2026-10-06-s1-postgres.md)。
 
 ## S0 真实链路准备
 
@@ -59,6 +59,7 @@ packages/common           环境配置
 packages/harbor-adapter    Harbor 集成边界
 packages/sandbox-provider Sandbox 配置边界
 packages/hub-sdk           类型化 API 客户端
+packages/object-store      不可变产物、Manifest 与恢复
 integration/harbor-runtime 独立的固定版本运行环境
 examples/                 单 Trial 入口与示例任务
 infra/                    基础设施与部署说明
@@ -69,4 +70,4 @@ tests/                    单元、集成与真实 E2E 验收要求
 
 开源许可证尚未确定；仓库公开不等于已授予软件使用许可。
 
-凭证隔离与部署恢复的最新状态见 [专项验收记录](docs/validation/2026-10-06-isolation-recovery.md)：独立 Verifier 与服务恢复通过，真实模型 Key 的 Agent 隔离仍未通过。当前直接 API 样例只用于可信测试任务，Hub 执行入口保持关闭。
+凭证隔离与部署恢复见 [专项验收记录](docs/validation/2026-10-06-isolation-recovery.md)，最新真实 Worker 闭环见 [Worker 验收记录](docs/validation/2026-10-06-s1-worker.md)。真实上游 Key 留在可信网关，Sandbox 使用受限会话，Verifier 使用独立环境；未知任务、多租户隔离与生产网关仍待验收。
