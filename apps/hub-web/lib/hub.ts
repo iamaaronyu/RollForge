@@ -4,6 +4,7 @@ import type { components } from "./api-types";
 export type JobList = components["schemas"]["JobList"];
 export type JobView = components["schemas"]["JobView"];
 export type ExecutionList = components["schemas"]["ExecutionList"];
+export type TrajectoryView = components["schemas"]["TrajectoryView"];
 export type ArtifactIndex = components["schemas"]["ArtifactIndex"];
 export type TaskList = components["schemas"]["ApprovedTaskList"];
 export class HubProblem extends Error {

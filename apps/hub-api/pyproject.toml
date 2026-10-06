@@ -3,7 +3,7 @@ name = "rollforge-api"
 version = "0.1.0"
 description = "RollForge api"
 requires-python = ">=3.11"
-dependencies = ["fastapi>=0.115,<1", "uvicorn[standard]>=0.34,<1", "sqlalchemy[asyncio]>=2.0,<3", "asyncpg>=0.30,<1", "alembic>=1.14,<2", "rollforge-schemas", "rollforge-common", "rollforge-object-store"]
+dependencies = ["fastapi>=0.115,<1", "uvicorn[standard]>=0.34,<1", "sqlalchemy[asyncio]>=2.0,<3", "asyncpg>=0.30,<1", "alembic>=1.14,<2", "rollforge-schemas", "rollforge-common", "rollforge-object-store", "rollforge-harbor-adapter"]
 
 [build-system]
 requires = ["hatchling"]
@@ -16,3 +16,4 @@ packages = ["src/rollforge_api"]
 rollforge-schemas = { workspace = true }
 rollforge-common = { workspace = true }
 rollforge-object-store = { workspace = true }
+rollforge-harbor-adapter = { workspace = true }

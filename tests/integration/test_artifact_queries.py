@@ -1,5 +1,6 @@
 """真实 PostgreSQL/MinIO 的产物所有权与完整性边界。"""
 
+import json
 from uuid import uuid4
 
 import test_object_store_minio as storage_tests
@@ -101,3 +102,49 @@ async def test_preview_bounds_plaintext_and_cross_execution(engine, server, stor
                 f"/api/v1/jobs/{scope.job_id}/executions/{uuid4()}/artifacts", headers=headers
             )
         ).status_code == 404
+
+
+async def test_trajectory_authorization_and_integrity(engine, server, store, output):
+    trajectory = {
+        "schema_version": "ATIF-v1.8",
+        "steps": [
+            {
+                "step_id": 1,
+                "source": "agent",
+                "message": "<script>synthetic</script>",
+                "metrics": {"completion_tokens": 0},
+            }
+        ],
+    }
+    (output / "agent/trajectory.json").write_text(json.dumps(trajectory))
+    async with clients(engine) as (app, sdk, raw, _ids, tokens):
+        storage_settings(app, server, store)
+        scope, _ = await publish(engine, server, store, output, sdk)
+        endpoint = f"/api/v1/jobs/{scope.job_id}/executions/{scope.execution_id}/trajectory"
+        headers = {"Authorization": "Bearer " + tokens["user"]}
+        response = await raw.get(endpoint, headers=headers)
+        assert response.status_code == 200
+        step = response.json()["steps"][0]
+        assert step["usage"]["completion_tokens"] == 0
+        assert step["usage"]["prompt_tokens"] is None and step["reasoning"] is None
+        for name, status in [("other_user", 404), ("worker", 403)]:
+            assert (
+                await raw.get(endpoint, headers={"Authorization": "Bearer " + tokens[name]})
+            ).status_code == status
+        store.client.put_object(
+            Bucket=store.bucket, Key=scope.prefix + "/files/agent/trajectory.json", Body=b"changed"
+        )
+        assert (await raw.get(endpoint, headers=headers)).status_code == 503
+
+
+async def test_unsupported_trajectory_keeps_raw_preview(engine, server, store, output):
+    async with clients(engine) as (app, sdk, raw, _ids, tokens):
+        storage_settings(app, server, store)
+        scope, _ = await publish(engine, server, store, output, sdk)
+        base = f"/api/v1/jobs/{scope.job_id}/executions/{scope.execution_id}"
+        headers = {"Authorization": "Bearer " + tokens["user"]}
+        assert (await raw.get(base + "/trajectory", headers=headers)).status_code == 422
+        response = await raw.get(
+            base + "/artifact-text", headers=headers, params={"path": "agent/trajectory.json"}
+        )
+        assert response.status_code == 200 and json.loads(response.text) == {"steps": []}

@@ -107,6 +107,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/jobs/{job_id}/executions/{execution_id}/trajectory": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Trajectory View */
+        readonly get: operations["trajectory_view"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/platform": {
         readonly parameters: {
             readonly query?: never;
@@ -532,6 +549,64 @@ export interface components {
             /** Size */
             readonly size: number;
         };
+        /** TimelineStep */
+        readonly TimelineStep: {
+            /** Copied Context */
+            readonly copied_context?: boolean | null;
+            /** Message */
+            readonly message: string;
+            /**
+             * Observations
+             * @default []
+             */
+            readonly observations: readonly components["schemas"]["ToolObservation"][];
+            /** Reasoning */
+            readonly reasoning?: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            readonly source: "system" | "user" | "agent";
+            /** Step Id */
+            readonly step_id: number;
+            /** Timestamp */
+            readonly timestamp?: string | null;
+            /**
+             * Tools
+             * @default []
+             */
+            readonly tools: readonly components["schemas"]["ToolAction"][];
+            readonly usage?: components["schemas"]["Usage"] | null;
+        };
+        /** ToolAction */
+        readonly ToolAction: {
+            /** Arguments Text */
+            readonly arguments_text: string;
+            /** Call Id */
+            readonly call_id: string;
+            /** Name */
+            readonly name: string;
+        };
+        /** ToolObservation */
+        readonly ToolObservation: {
+            /** Call Id */
+            readonly call_id?: string | null;
+            /** Text */
+            readonly text?: string | null;
+        };
+        /** TrajectoryView */
+        readonly TrajectoryView: {
+            /**
+             * Projection Version
+             * @default 1
+             * @constant
+             */
+            readonly projection_version: 1;
+            /** Source Version */
+            readonly source_version: string;
+            /** Steps */
+            readonly steps: readonly components["schemas"]["TimelineStep"][];
+        };
         /**
          * TrialStatus
          * @enum {string}
@@ -559,6 +634,17 @@ export interface components {
              * Format: uuid
              */
             readonly trial_id: string;
+        };
+        /** Usage */
+        readonly Usage: {
+            /** Cached Tokens */
+            readonly cached_tokens?: number | null;
+            /** Completion Tokens */
+            readonly completion_tokens?: number | null;
+            /** Cost Usd */
+            readonly cost_usd?: number | null;
+            /** Prompt Tokens */
+            readonly prompt_tokens?: number | null;
         };
     };
     responses: never;
@@ -1062,6 +1148,83 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ArtifactIndex"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    readonly trajectory_view: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly job_id: string;
+                readonly execution_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TrajectoryView"];
                 };
             };
             /** @description Unauthorized */

@@ -23,7 +23,7 @@ Next 变量通过启动环境或 `apps/hub-web/.env.local` 配置，不能假设
 
 `GET /api/v1/jobs?limit=20&after=<UUID>` 返回 JobList，只包含用户自己的 JobSummary 和 TrialView，不返回配置快照。`GET /api/v1/jobs/{job_id}/executions?limit=20&after=<token>` 返回 ExecutionList，按执行 token 递增，不返回 Worker 身份。limit 范围 1–100，游标来自上一页 next_cursor。跨用户历史与不存在的 Job 都返回 404；WORKER 角色不能使用用户查询。
 
-页面使用 OpenAPI 生成的类型，服务端 fetch 禁用缓存和重定向、设置超时，并用固定中文消息处理异常。浏览器只接收任务标签和展示字段，不接收 USER token、runtime 网关配置或完整快照。刷新链接主动拉取最新状态；本批没有轮询、用户登录、取消按钮或轨迹 Viewer。
+页面使用 OpenAPI 生成的类型，服务端 fetch 禁用缓存和重定向、设置超时，并用固定中文消息处理异常。浏览器只接收任务标签和展示字段，不接收 USER token、runtime 网关配置或完整快照。刷新链接主动拉取最新状态；尚无轮询、用户登录或取消按钮。
 
 该目录是临时受控配置，不替代未来持久化 Registry 或用户资产授权。正式执行入口依然关闭；创建排队记录不等于已有运行中的 Worker。页面与数据库验收使用合成数据，不算新的真实模型验收。
 
@@ -31,4 +31,11 @@ Next 变量通过启动环境或 `apps/hub-web/.env.local` 配置，不能假设
 
 详情中的已提交 Execution 可进入 `/jobs/{job_id}/executions/{execution_id}`，查看 Manifest 文件索引并选择文本。索引先确认 PostgreSQL 所有权与已接受 ResultCommit，再核对远端 Manifest 摘要和执行作用域；未提交或跨用户执行为 404。预览仅接受索引中存在的文件路径，读回 SHA256/大小一致后以 UTF-8 文本显示，最多 1 MiB，二进制拒绝。原始 HTML 作为纯文本显示，不作为网页执行；API 附带 nosniff、no-store 与限制 CSP。
 
-索引核验不代表再次读回全部文件；每次预览单独核验内容。正式提交仍调用完整 verify，未降低验收要求。基础 Viewer 尚无大文件下载、结构化轨迹投影、统计聚合或搜索；usage/reasoning 缺失保持未知。
+索引核验不代表再次读回全部文件；每次预览单独核验内容。正式提交仍调用完整 verify，未降低验收要求。基础 Viewer 尚无大文件下载、统计聚合或搜索；usage/reasoning 缺失保持未知。
+
+
+## 主轨迹时间线
+
+产物页面自动读取已提交的 `agent/trajectory.json` 并展示版本化白名单投影。API `GET .../trajectory` 沿用数据库所有权、Manifest/文件摘要和 1 MiB 预览限制，最多 1000 步。来源支持固定 Harbor 0.24.0 中 ATIF-v1.0 至 v1.8 的所选字段，按原始 step_id 顺序展示消息、工具参数和与调用 ID 对应的观察结果；不替代 Harbor 的完整 ATIF 验证器。
+
+usage/reasoning 缺失保持未知，零用量保留为零；不累加复制上下文或推算总用量。文本由 React 转义，多模态仅显示占位提示，不加载远程 URL。子轨迹、继续片段和自定义扩展保存在原文，本批不展开。版本未知、结构不支持或超限时显示固定提示，原始文件仍遵循既有预览边界。投影只用于展示，不修改原始输出、评分或执行状态。

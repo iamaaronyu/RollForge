@@ -6,9 +6,11 @@ from uuid import UUID
 
 from fastapi import Query, Request
 from fastapi.responses import PlainTextResponse
+from rollforge_harbor_adapter.trajectory import UnsupportedTrajectory, project_trajectory
 from rollforge_object_store.bundle import BundlePublisher
 from rollforge_object_store.s3 import ObjectStoreError, S3ObjectStore
 from rollforge_schemas.api import ArtifactIndex, ErrorCode
+from rollforge_schemas.trajectory import TrajectoryView
 
 from rollforge_api.routes import ApiFailure, Store, User, router
 
@@ -91,3 +93,26 @@ async def artifact_text(
             "Content-Security-Policy": "default-src 'none'",
         },
     )
+
+
+@router.get(
+    "/jobs/{job_id}/executions/{execution_id}/trajectory",
+    response_model=TrajectoryView,
+    tags=["artifacts"],
+    operation_id="trajectory_view",
+)
+async def trajectory_view(
+    job_id: UUID, execution_id: UUID, identity: User, store: Store, request: Request
+):
+    accepted = await store.accepted_execution(job_id, execution_id, identity.subject_id)
+    if accepted is None:
+        raise ApiFailure(404, ErrorCode.NOT_FOUND, "执行产物不存在")
+    value = await asyncio.to_thread(
+        read_artifacts, request.app.state.settings, *accepted, "agent/trajectory.json"
+    )
+    try:
+        return project_trajectory(value)
+    except UnsupportedTrajectory:
+        raise ApiFailure(
+            422, ErrorCode.INVALID_REQUEST, "轨迹格式不受支持，请查看原始文件"
+        ) from None

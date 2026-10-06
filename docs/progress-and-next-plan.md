@@ -28,7 +28,7 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 | Hub 联合恢复 | 实际提交后响应丢失，重建应用/SDK，租约过期且 Manifest 删除后幂等返回；旧产物无法绕过新执行权 | 真实 PostgreSQL/MinIO 与鉴权 API；应用重建不等同于宿主掉电 |
 | Worker | 单次领取、续租、任务归档校验、凭证白名单、独立 Runtime、上传与 pending-commit、resume | 真实 HTTP 主链通过；修复 venv 解释器解析和 Mac 系统代理问题 |
 | 真实 Worker 故障验收 | reward 1.0、0.0、提交响应丢失后恢复、协作式取消清理、同 Trial 新 Execution Retry、旧提交 409 | Sandbox/Firecracker 均为 0；协作取消不代表 Worker/Runtime SIGKILL 或掉电清理已通过 |
-| 前端业务页 | 中文任务创建/列表/详情、服务端审核目录、Execution 历史与生成类型 | 合成数据浏览器验收通过；仍无登录、轮询和轨迹 Viewer |
+| 前端业务页 | 中文任务创建/列表/详情、服务端审核目录、Execution 历史与生成类型 | 合成数据浏览器验收通过；已有基础产物和主轨迹 Viewer；仍无登录、轮询 |
 
 真实主链提交记录为 `make check` 140 项全部通过、无跳过，`make runtime-check` 9 项通过。该数字是有相应环境时的历史验收证据；普通检查未提供数据库/MinIO 时会跳过专项，不能据此声称再次通过真实集成。
 
@@ -92,4 +92,4 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 
 本批页面及查询验收见 [页面记录](validation/2026-10-06-s1-web.md)；后续按 [逐步实施计划](next-implementation.md) 推进。
 
-第二批已实现受控产物索引及 1 MiB 文本预览，真实 PostgreSQL/MinIO 权限、越界、篡改与预览边界通过；详见 [基础 Viewer 验收](validation/2026-10-06-viewer.md)。结构化轨迹投影尚未完成。
+第二批已实现受控产物索引及 1 MiB 文本预览，真实 PostgreSQL/MinIO 权限、越界、篡改与预览边界通过；详见 [基础 Viewer 验收](validation/2026-10-06-viewer.md)。第三批主轨迹版本化投影与中文时间线已实现，159 项全量测试通过；详见 [时间线验收](validation/2026-10-06-trajectory.md)。多模态/子轨迹展开、搜索与聚合仍待开发。
