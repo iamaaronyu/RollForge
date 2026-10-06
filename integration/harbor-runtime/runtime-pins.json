@@ -9,6 +9,7 @@
     "version": "2.46.0"
   },
   "e2b_runtime": {
+    "inspected_source_revision": "7278c2a380767c9989da73cf4c04b1af1b32da18",
     "compose_revision": "08436994a1c0bd48a7f03a08c020bf7a4a673dfa",
     "files": {
       "compose.yaml": {
@@ -47,7 +48,8 @@
     "default_free_disk_size_mb": 2048,
     "max_length_hours": 24
   },
-  "credential_isolation_validated": false,
+  "credential_isolation_validated": true,
+  "credential_isolation_mode": "restricted-local-model-gateway-session",
   "private_verifier_validated": true,
   "deployment_restart_validated": true,
   "host_reboot_validated": false,

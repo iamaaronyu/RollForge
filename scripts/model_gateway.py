@@ -58,7 +58,9 @@ def make_handler(sessions: Sessions):
             self.wfile.write(body)
 
         def do_POST(self):
-            if self.path != "/v1/messages":
+            # Claude Code 使用 Anthropic SDK 的 beta=true 查询参数。
+            # 只允许这两个固定入口，不把客户端 URL 拼接进上游地址。
+            if self.path not in {"/v1/messages", "/v1/messages?beta=true"}:
                 self.reply(404, "unsupported endpoint")
                 return
             try:

@@ -20,7 +20,9 @@ from rollforge_harbor_adapter.results import summarize_result
 ROOT = Path(__file__).resolve().parents[1]
 
 
-async def run(root: Path, separate_verifier: bool = False) -> int:
+async def run(
+    root: Path, separate_verifier: bool = False, blocked_urls: list[str] | None = None
+) -> int:
     from e2b import AsyncSandbox
 
     paginator = AsyncSandbox.list()
@@ -91,6 +93,17 @@ Path('/app/isolation.json').write_text(json.dumps(flags))
             boundary["gateway_probe_exit"] = probe.return_code
             boundary["gateway_probe_http_status"] = probe.stdout.strip()
             print(json.dumps({"gateway_probe": boundary}), flush=True)
+        if blocked_urls:
+            import shlex
+
+            blocked = []
+            for target in blocked_urls:
+                result = await trial.agent_environment.exec(
+                    command="curl --noproxy '*' --max-time 3 -s -o /dev/null "
+                    "-w '%{http_code}' " + shlex.quote(target)
+                )
+                blocked.append(result.return_code != 0 and result.stdout.strip() == "000")
+            boundary["blocked_endpoints_unreachable"] = blocked
         result = await trial.agent_environment.exec(command="test ! -e /tests/private-canary")
         boundary["private_tests_absent_before_agent"] = result.return_code == 0
 
@@ -144,6 +157,7 @@ Path('/app/isolation.json').write_text(json.dumps(flags))
         and verifier_flags.get("tests_visible") is True
         and not secret_hits
         and not remaining
+        and all(boundary.get("blocked_endpoints_unreachable", []))
         and content_manifest(task).digest == digest
     )
     evidence = {
@@ -177,6 +191,7 @@ def main() -> int:
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--separate-verifier", action="store_true")
     parser.add_argument("--env-file", type=Path, default=ROOT / ".env.spike")
+    parser.add_argument("--blocked-url", action="append", default=[])
     args = parser.parse_args()
     if not args.run:
         print("需显式传入 --run；测试 Agent 工具是否能读取凭证环境及私密测试文件。")
@@ -192,7 +207,7 @@ def main() -> int:
     root = ROOT / "outputs/spike" / ("isolation-" + uuid4().hex)
     root.mkdir(parents=True, mode=0o700)
     try:
-        return asyncio.run(run(root, args.separate_verifier))
+        return asyncio.run(run(root, args.separate_verifier, args.blocked_url))
     except Exception as exc:
         print(json.dumps({"error_type": type(exc).__name__}))
         return 1
