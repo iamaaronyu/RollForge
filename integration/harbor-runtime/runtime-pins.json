@@ -39,7 +39,8 @@
     "base_url": "https://api.deepseek.com/anthropic",
     "mutable_alias": true
   },
-  "s0_acceptance_complete": false,
+  "s0_acceptance_complete": true,
+  "s0_acceptance_scope": "single-concurrency-lan-test-with-restricted-model-gateway",
   "validation_report": "docs/validation/2026-10-06-e2b.md",
   "sample_runtime": {
     "cpu_count": 2,
@@ -52,6 +53,6 @@
   "credential_isolation_mode": "restricted-local-model-gateway-session",
   "private_verifier_validated": true,
   "deployment_restart_validated": true,
-  "host_reboot_validated": false,
+  "host_reboot_validated": true,
   "isolation_validation_report": "docs/validation/2026-10-06-isolation-recovery.md"
 }

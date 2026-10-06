@@ -107,6 +107,8 @@ sudo python3 scripts/recover_e2b_host.py --deployment-dir <E2B部署目录> --al
 
 该脚本不是开机服务，不保证无人工恢复。`services_and_sdk_smoke_passed` 也不代表 S0 完成：仍须比较 boot ID，重连 Mac SSH 隧道，并运行真实 Harbor/Claude Code/受限模型网关/独立 Verifier 验收，检查凭证、评分和资源清理。
 
+实测重新创建 orchestrator 后，API 可能返回模板放置 503，即使官方 smoke 曾通过、宿主仍有资源。先确认没有活动 Sandbox/Firecracker，并检查错误与资源；本次使用 `docker compose restart api` 刷新后恢复。不要把刷新 API 视为通用修复或在运行 Trial 时执行；刷新后重新等待 API healthy，再跑真实任务，失败输出保留为恢复证据。
+
 ## Harbor 与 Embed 的实测兼容配置
 
 Harbor 0.24.0 原生创建 E2B Sandbox 时申请 86400 秒；Embed 初始团队限额为 1 小时。首次 Harbor 模板构建前，使用 infra/e2b/harbor-local-limits.sql 给 local-dev-team 设置 24 小时限额与 2048 MiB 默认空闲磁盘，重启 API 刷新缓存。SQL 从实际 team_limits 视图复制其他限额到 project_limits 覆盖表，不修改全局 tier。
