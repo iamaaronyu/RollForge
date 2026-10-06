@@ -1,6 +1,7 @@
 import asyncio
 
 from alembic import context
+from rollforge_api import models  # noqa: F401
 from rollforge_api.db import Base, create_engine
 from rollforge_common.settings import Settings
 
@@ -26,5 +27,7 @@ if context.is_offline_mode():
     )
     with context.begin_transaction():
         context.run_migrations()
+elif context.config.attributes.get("connection") is not None:
+    configure(context.config.attributes["connection"])
 else:
     asyncio.run(online())

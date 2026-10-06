@@ -7,6 +7,22 @@ permissions:
 jobs:
   python:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: rollforge_test
+          POSTGRES_PASSWORD: local_test_only
+          POSTGRES_DB: rollforge_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rollforge_test -d rollforge_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      ROLLFORGE_TEST_DATABASE_URL: postgresql+asyncpg://rollforge_test:local_test_only@localhost:5432/rollforge_test
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

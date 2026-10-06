@@ -2,7 +2,7 @@
 
 开源 Agent Rollout 与评测平台。复用 Harbor 执行任务、E2B 提供 Sandbox，自研实验控制面与轨迹、产物、评分数据层。
 
-**当前状态：S0 基础真实链路已验收，完整 S0 关卡仍在进行。** 已提供健康接口、共享 Schema、状态机、前端基础页，以及独立的 Harbor/E2B 运行环境、预检和结果解析。Hub 的 Job 执行、持久化租约、Registry 与生产结果存储尚未实现。
+**当前状态：S0 基础真实链路已验收，完整 S0 关卡仍在进行；S1 控制面基础并行开发。** 已提供健康接口、共享 Schema、状态机、前端基础页，以及独立的 Harbor/E2B 运行环境、预检和结果解析。单 Trial 数据库迁移与事务租约服务已通过真实 PostgreSQL 验收；鉴权业务 API、真实 Worker、Registry 与生产结果存储尚未接通。
 
 首个验证组合为 **Claude Code + DeepSeek V4.1 Flash + 自托管 E2B**。默认使用 DeepSeek 官方 Anthropic 兼容接口；其他服务商必须单独确认协议与模型标识。
 
@@ -31,7 +31,7 @@ make scheduler-check
 uv run alembic -c apps/hub-api/alembic.ini current
 ```
 
-迁移环境已接通，业务表将在执行契约确认后实现。Worker/Scheduler 目前仅支持 `--check`，不会模拟真实 Job 执行。
+迁移已包含 Job/Trial/Execution 表；应用前确认目标数据库与备份。Worker/Scheduler 目前仅支持 `--check`，不会模拟真实 Job 执行。S1 数据库专项验收见 [验收记录](docs/validation/2026-10-06-s1-postgres.md)。
 
 ## S0 真实链路准备
 

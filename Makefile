@@ -1,4 +1,4 @@
-.PHONY: install check test api web infra worker-check scheduler-check runtime-install runtime-check spike
+.PHONY: install check test postgres-check api web infra worker-check scheduler-check runtime-install runtime-check spike
 export UV_CACHE_DIR := $(CURDIR)/.cache/uv
 install:
 	uv sync --all-packages --locked
@@ -11,6 +11,9 @@ check:
 	npm --prefix apps/hub-web run build
 test:
 	uv run pytest
+postgres-check:
+	@test -n "$$ROLLFORGE_TEST_DATABASE_URL" || (echo "需要设置专用 PostgreSQL 测试地址 ROLLFORGE_TEST_DATABASE_URL"; exit 2)
+	uv run pytest tests/integration/test_execution_postgres.py
 api:
 	uv run uvicorn rollforge_api.main:app --reload --host 127.0.0.1 --port 8000
 web:
