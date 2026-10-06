@@ -59,6 +59,10 @@ S0 仍未完成，主机重启复检待 owner 执行；Hub 执行入口保持关
 
 主机重启仍待执行，需要复检内核、KVM、大页池、磁盘、控制端口防火墙及 SSH 隧道；服务停止/启动成功不能代替主机重启验收。SSH 账户无法免密 sudo，完整重启需要 owner 在 Linux 端执行并告知。
 
+补充 `scripts/recover_e2b_host.py`：默认只读；owner 使用 --apply 时检查 root 与活动 VM 状态，先恢复控制端口防护，再执行固定 Compose 和官方 SDK smoke，输出留在 0600 本地日志。四项离线保护检查通过，覆盖非 root、活动 VM、状态未知和防火墙检查出错时拒绝启动。本轮仅在真实 Linux 执行只读模式：Compose SHA256 匹配、预检 errors 为空、内核 6.8.0-138、大页 1024、空闲磁盘约 399 GiB。启动时间仍为 2026-10-05 15:43:49，没有重启后恢复实测；不得据此更新 host_reboot_validated。恢复流程见 [本地测试部署](../local-testing.md)。
+
+恢复脚本提交检查：make check 通过，63 项测试通过、8 项专用 PostgreSQL 测试跳过，lint/格式、前端类型与构建通过；make runtime-check 的 8 项通过。共享目录中的 S1 API/SDK 改动不纳入本次恢复脚本提交。
+
 ## 开放真实执行入口的条件
 
 网关真实 Sandbox 链路通过，真实上游密钥不进入 Sandbox/快照/输出；私密 Verifier 在独立环境验收；部署恢复和主机重启复检完成。S1 的 PostgreSQL Job/Trial/Execution、不可变快照与事务执行权服务可以并行开发，以真实双 Worker 竞争验证；开放入口还须通过鉴权、对象存储恢复与真实执行闭环。

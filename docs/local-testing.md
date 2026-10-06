@@ -89,6 +89,24 @@ owner 已选择继续准备现有主机，详细步骤见 [现有主机准备流
 
 未认证的 5008 控制端口只允许本机访问，SDK 模板上传使用 SSH 隧道。当前测试机已经加入带 rollforge-e2b-control 注释的 INPUT 规则；该规则不保证重启后持久化，重启后需复检。
 
+## 主机重启后的恢复
+
+固定官方指南要求重启后再次执行 Compose up，使 host-setup 恢复 MSS clamp、网络命名空间等宿主配置；仅看到常驻容器恢复运行不能证明 Sandbox 可用。
+
+`scripts/recover_e2b_host.py` 默认只读，核对宿主资源、固定 Compose SHA256、boot ID 和大页数量。它与 `scripts/check_e2b_host.py` 必须放在同一目录。在 Linux 上执行：
+
+```sh
+python3 scripts/recover_e2b_host.py --deployment-dir <E2B部署目录> --allow-low-memory
+# owner 已确认独占维护窗口、没有活动 Sandbox，重启后本地认证：
+sudo python3 scripts/recover_e2b_host.py --deployment-dir <E2B部署目录> --allow-low-memory --apply
+```
+
+`--apply` 需要 root，存在 Firecracker 或进程状态检查出错时拒绝继续。先检查/补充仅允许 loopback 访问 5008 的 INPUT 防护，再执行官方 `docker compose up -d --wait` 和 SDK smoke；不执行主机重启、删除卷或镜像。使用 Docker Compose 默认合并已有 override，不能在测试网关临时 override 未撤销时执行恢复。
+
+原始部署/SDK 输出可能包含凭证，只写到部署目录下独占创建的 `recovery-*.local.log`，权限 0600；终端仅显示结构化检查和安全的错误类型。失败时 owner 在 Linux 本地查看该日志，不上传原始日志。
+
+该脚本不是开机服务，不保证无人工恢复。`services_and_sdk_smoke_passed` 也不代表 S0 完成：仍须比较 boot ID，重连 Mac SSH 隧道，并运行真实 Harbor/Claude Code/受限模型网关/独立 Verifier 验收，检查凭证、评分和资源清理。
+
 ## Harbor 与 Embed 的实测兼容配置
 
 Harbor 0.24.0 原生创建 E2B Sandbox 时申请 86400 秒；Embed 初始团队限额为 1 小时。首次 Harbor 模板构建前，使用 infra/e2b/harbor-local-limits.sql 给 local-dev-team 设置 24 小时限额与 2048 MiB 默认空闲磁盘，重启 API 刷新缓存。SQL 从实际 team_limits 视图复制其他限额到 project_limits 覆盖表，不修改全局 tier。
