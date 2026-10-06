@@ -3,9 +3,12 @@
 import json
 import os
 import secrets
+import selectors
 import shutil
+import signal
 import socket
 import subprocess
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -15,8 +18,8 @@ import httpx
 import pytest
 from dotenv import dotenv_values
 from pydantic import SecretStr
-from rollforge_object_store.bundle import BundlePublisher
-from rollforge_object_store.s3 import ObjectConflict, ObjectStoreError, S3ObjectStore
+from rollforge_object_store.bundle import BundlePublisher, canonical
+from rollforge_object_store.s3 import ObjectConflict, ObjectStoreError, S3ObjectStore, digest
 from rollforge_schemas.storage import ExecutionScope
 
 
@@ -176,6 +179,89 @@ def test_real_partial_upload_can_resume_with_fresh_client(server, store, scope, 
         assert publisher.verify(scope, accepted.manifest_digest) == accepted
     finally:
         fresh.close()
+
+
+@pytest.mark.parametrize("checkpoint", ["first-file", "manifest"])
+def test_real_killed_publisher_can_recover(server, store, scope, output, checkpoint):
+    # 只终止独立上传子进程；这里不模拟 Worker 或 Sandbox 生命周期。
+    script = """
+import json
+import signal
+import sys
+from pathlib import Path
+from pydantic import SecretStr
+from rollforge_object_store.bundle import BundlePublisher
+from rollforge_object_store.s3 import S3ObjectStore
+from rollforge_schemas.storage import ExecutionScope
+
+config = json.load(sys.stdin)
+scope = ExecutionScope.model_validate(config['scope'])
+store = S3ObjectStore(config['endpoint'], config['bucket'],
+    SecretStr(config['access']), SecretStr(config['secret']), allow_local_http=True)
+class CheckpointStore:
+    def put_immutable(self, key, data):
+        store.put_immutable(key, data)
+        if config['checkpoint'] == 'first-file' or key == scope.manifest_key:
+            print('checkpoint', flush=True)
+            signal.pause()
+BundlePublisher(CheckpointStore(), sensitive_values=()).publish(scope, Path(config['output']))
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", script],
+        env={"PATH": os.environ.get("PATH", "")},
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    try:
+        # 临时测试凭证仅通过私有管道传入，不进命令行、文件或测试输出。
+        json.dump(
+            {
+                "endpoint": server.endpoint,
+                "bucket": store.bucket,
+                "access": server.access.get_secret_value(),
+                "secret": server.secret.get_secret_value(),
+                "scope": scope.model_dump(mode="json"),
+                "output": str(output),
+                "checkpoint": checkpoint,
+            },
+            process.stdin,
+        )
+        process.stdin.close()
+        with selectors.DefaultSelector() as selector:
+            selector.register(process.stdout, selectors.EVENT_READ)
+            assert selector.select(timeout=15), "上传子进程未到达真实写入检查点"
+            assert process.stdout.readline().strip() == "checkpoint"
+        process.kill()
+        process.wait(timeout=10)
+        assert process.returncode == -signal.SIGKILL
+        publisher = BundlePublisher(store, sensitive_values=())
+        expected = publisher.prepare(scope, output)
+        first = expected.files[0]
+        store.read_verified(scope.prefix + "/files/" + first.path, first.digest, first.size)
+        if checkpoint == "first-file":
+            with pytest.raises(ObjectStoreError):
+                store.read(scope.manifest_key)
+        fresh = server.store(store.bucket)
+        try:
+            restored = BundlePublisher(fresh, sensitive_values=())
+            if checkpoint == "manifest":
+                accepted = restored.verify(scope, digest(canonical(expected)))
+            else:
+                accepted = restored.publish(scope, output)
+            assert accepted.rewards == {"reward": 0.0}
+            shutil.rmtree(output)
+            assert restored.verify(scope, accepted.manifest_digest) == accepted
+        finally:
+            fresh.close()
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=10)
+        process.stdout.close()
+        if not process.stdin.closed:
+            process.stdin.close()
 
 
 def test_real_minio_restart_preserves_verified_result(server, store, scope, output):
