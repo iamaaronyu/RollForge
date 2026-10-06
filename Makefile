@@ -1,4 +1,4 @@
-.PHONY: install check test postgres-check api web infra worker-check scheduler-check runtime-install runtime-check spike
+.PHONY: install check test postgres-check api-types api web infra worker-check scheduler-check runtime-install runtime-check spike
 export UV_CACHE_DIR := $(CURDIR)/.cache/uv
 install:
 	uv sync --all-packages --locked
@@ -6,6 +6,7 @@ install:
 check:
 	uv run ruff check .
 	uv run ruff format --check .
+	uv run python scripts/export_openapi.py --check
 	uv run pytest
 	npm --prefix apps/hub-web run typecheck
 	npm --prefix apps/hub-web run build
@@ -13,7 +14,10 @@ test:
 	uv run pytest
 postgres-check:
 	@test -n "$$ROLLFORGE_TEST_DATABASE_URL" || (echo "需要设置专用 PostgreSQL 测试地址 ROLLFORGE_TEST_DATABASE_URL"; exit 2)
-	uv run pytest tests/integration/test_execution_postgres.py
+	uv run pytest tests/integration/test_execution_postgres.py tests/integration/test_job_api_postgres.py
+api-types:
+	uv run python scripts/export_openapi.py
+	npm --prefix apps/hub-web run api-types
 api:
 	uv run uvicorn rollforge_api.main:app --reload --host 127.0.0.1 --port 8000
 web:

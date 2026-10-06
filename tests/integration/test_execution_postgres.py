@@ -1,13 +1,11 @@
 """专用 PostgreSQL 验收；每个测试创建独立 schema，仅清理自己创建的资源。"""
 
 import asyncio
-import os
 from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
-import pytest_asyncio
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
@@ -18,7 +16,6 @@ from rollforge_api.models import Execution, Trial
 from rollforge_schemas.domain import RevisionRef, TrialStatus
 from rollforge_schemas.execution import CreateJob, ExecutionSnapshot, ResultCommit
 from sqlalchemy import func, select, text, update
-from sqlalchemy.ext.asyncio import create_async_engine
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -30,32 +27,6 @@ def migration(connection, action):
         command.upgrade(config, "head")
     else:
         command.downgrade(config, "base")
-
-
-@pytest_asyncio.fixture
-async def engine():
-    url = os.environ.get("ROLLFORGE_TEST_DATABASE_URL")
-    if not url:
-        pytest.skip("真实 PostgreSQL 未配置：设置 ROLLFORGE_TEST_DATABASE_URL")
-    if not url.startswith("postgresql+asyncpg://"):
-        pytest.fail("验收必须使用 PostgreSQL + asyncpg")
-    schema = "test_execution_" + uuid4().hex
-    admin = create_async_engine(url)
-    isolated = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
-    created = False
-    try:
-        async with admin.begin() as connection:
-            await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
-            created = True
-        async with isolated.begin() as connection:
-            await connection.run_sync(lambda sync: migration(sync, "up"))
-        yield isolated
-    finally:
-        await isolated.dispose()
-        if created:
-            async with admin.begin() as connection:
-                await connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
-        await admin.dispose()
 
 
 def request(max_executions=3):

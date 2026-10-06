@@ -32,6 +32,7 @@ jobs:
       - run: uv sync --all-packages --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
+      - run: uv run python scripts/export_openapi.py --check
       - run: uv run pytest
       - run: uv run python -m rollforge_worker --check
       - run: uv run python -m rollforge_scheduler --check

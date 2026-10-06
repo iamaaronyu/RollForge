@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "npm run api-types:check && next typegen && tsc --noEmit",
+    "api-types": "openapi-typescript ../../docs/openapi.json -o lib/api-types.ts --immutable",
+    "api-types:check": "openapi-typescript ../../docs/openapi.json -o lib/api-types.ts --immutable --check"
   },
   "dependencies": {
     "next": "^16.0.0",
@@ -14,10 +16,11 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.7.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0"
+    "@types/react-dom": "^19.0.0",
+    "openapi-typescript": "7.13.0",
+    "typescript": "^5.7.0"
   },
   "engines": {
     "node": ">=20.9.0"

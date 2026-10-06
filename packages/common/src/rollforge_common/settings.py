@@ -10,3 +10,5 @@ class Settings(BaseSettings):
     )
     redis_url: SecretStr = SecretStr("redis://localhost:6379/0")
     object_storage_endpoint: str = "http://localhost:9000"
+    api_credentials: SecretStr = SecretStr("[]")
+    control_plane_writes_enabled: bool = False
