@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from rollforge_api import artifacts  # noqa: F401
 from rollforge_api.auth import Authenticator
 from rollforge_api.catalog import load_catalog
 from rollforge_api.db import create_engine

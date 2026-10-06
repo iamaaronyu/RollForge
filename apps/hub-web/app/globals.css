@@ -33,3 +33,4 @@ dl { display: grid; grid-template-columns: 130px 1fr; gap: 12px; }
 dt { color: #a1b2a5; } dd { margin: 0; overflow-wrap: anywhere; }
 nav { margin-top: 20px; } .panel .note { margin-top: 16px; font-size: 14px; }
 @media(max-width: 600px) { main { padding: 24px 16px; } .panel { padding: 18px; } dl { grid-template-columns: 1fr; } }
+.artifact-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.7; max-height: 650px; overflow: auto; }

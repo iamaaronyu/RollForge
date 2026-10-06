@@ -51,3 +51,5 @@ make check 和 CI 检查实际 API 与导出文件一致，前端 typecheck 检�
 新增 USER 接口：`GET /api/v1/jobs`（UUID 游标分页）、`GET /api/v1/jobs/{job_id}/executions`（执行 token 游标分页）、`GET /api/v1/tasks/approved`（仅 id/label）、`POST /api/v1/jobs/from-approved-task`（job_id/task_id，由服务端选冻结快照）。列表不返回快照，执行历史不返回 Worker 身份；跨用户历史为 404。分页 limit 为 1–100，next_cursor 为 null 表示最后一页。Job ID 排序不代表时间排序。
 
 审核目录是部署者提供的私密启动配置，不是持久化 Registry。界面和边界见 [本机任务界面](web-console.md)，后续实施顺序见 [实施进度](next-implementation.md)。正式入口与写开关仍分别控制，浏览器不能自由指定 runtime 配置。
+
+产物 USER 接口：`GET /api/v1/jobs/{job_id}/executions/{execution_id}/artifacts` 返回已接受结果的 ArtifactIndex；`GET .../artifact-text?path=<相对文件路径>` 返回经摘要核验的纯文本。未接受/跨用户为 404，大小超过 1 MiB 为 413，二进制/非 UTF-8 为 422，篡改或存储故障为安全 503。对象键由数据库执行身份生成，不接受客户端对象键。

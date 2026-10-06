@@ -26,3 +26,9 @@ Next 变量通过启动环境或 `apps/hub-web/.env.local` 配置，不能假设
 页面使用 OpenAPI 生成的类型，服务端 fetch 禁用缓存和重定向、设置超时，并用固定中文消息处理异常。浏览器只接收任务标签和展示字段，不接收 USER token、runtime 网关配置或完整快照。刷新链接主动拉取最新状态；本批没有轮询、用户登录、取消按钮或轨迹 Viewer。
 
 该目录是临时受控配置，不替代未来持久化 Registry 或用户资产授权。正式执行入口依然关闭；创建排队记录不等于已有运行中的 Worker。页面与数据库验收使用合成数据，不算新的真实模型验收。
+
+## 基础产物 Viewer
+
+详情中的已提交 Execution 可进入 `/jobs/{job_id}/executions/{execution_id}`，查看 Manifest 文件索引并选择文本。索引先确认 PostgreSQL 所有权与已接受 ResultCommit，再核对远端 Manifest 摘要和执行作用域；未提交或跨用户执行为 404。预览仅接受索引中存在的文件路径，读回 SHA256/大小一致后以 UTF-8 文本显示，最多 1 MiB，二进制拒绝。原始 HTML 作为纯文本显示，不作为网页执行；API 附带 nosniff、no-store 与限制 CSP。
+
+索引核验不代表再次读回全部文件；每次预览单独核验内容。正式提交仍调用完整 verify，未降低验收要求。基础 Viewer 尚无大文件下载、结构化轨迹投影、统计聚合或搜索；usage/reasoning 缺失保持未知。

@@ -9,6 +9,7 @@
 - `prepare(scope, native_output_dir)`：输出 ArtifactManifest，不上传。
 - `publish(scope, native_output_dir)`：文件全部条件写入并读回校验后，最后写 Manifest；返回可提交的 ResultCommit。
 - `verify(scope, manifest_digest)`：只依赖远端对象，核验完整 Manifest 和文件摘要，从原始 result.json 重新解析汇总，返回相同 ResultCommit。
+- `inspect(scope, manifest_digest)`：只核验 Manifest 摘要、契约、规范格式和作用域，供已接受结果的文件索引使用；不读回所有文件，不能替代完成提交的 verify。单文件预览仍须 read_verified。
 - `S3ObjectStore.close()`：调用方结束时关闭 SDK 连接。
 
 `scope` 是 ExecutionScope，包含 job_id、trial_id、execution_id、fencing_token。相同 Execution 的输出变更会被拒绝；Retry 必须使用新 Execution。对象键为 `jobs/{job_id}/trials/{trial_id}/executions/{execution_id}/files/{relative_path}`，Manifest 位于同一前缀下的 manifest.json。

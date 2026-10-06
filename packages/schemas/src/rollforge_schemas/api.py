@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import Field
 
 from rollforge_schemas.execution import Contract, ExecutionSnapshot, ResultCommit
+from rollforge_schemas.storage import StoredFile
 
 
 class Role(StrEnum):
@@ -43,6 +44,11 @@ class ApprovedTaskList(Contract):
 class ApprovedJobCreateRequest(Contract):
     job_id: UUID
     task_id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,64}$")
+
+
+class ArtifactIndex(Contract):
+    files: tuple[StoredFile, ...]
+    result: ResultCommit
 
 
 class ClaimRequest(Contract):

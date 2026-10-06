@@ -24,11 +24,11 @@ export default async function Detail({ params, searchParams }: { params: Promise
       <p className="note">0 分是有效评分。Retry 保留逻辑 Trial，创建新的 Execution。</p>
     </section>
     <section className="panel"><h2>Execution 历史</h2>
-      {executions.items.length ? <div className="table-wrap"><table><thead><tr><th>序号</th><th>Execution</th><th>状态</th><th>结果</th><th>租约期限</th></tr></thead><tbody>
-        {executions.items.map(item => <tr key={item.execution_id}><td>{item.fencing_token}</td><td className="identifier">{item.execution_id}</td><td>{labels[item.status]}</td><td>{resultText(item.result)}</td><td>{new Date(item.expires_at).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</td></tr>)}
+      {executions.items.length ? <div className="table-wrap"><table><thead><tr><th>序号</th><th>Execution</th><th>状态</th><th>结果</th><th>租约期限</th><th>产物</th></tr></thead><tbody>
+        {executions.items.map(item => <tr key={item.execution_id}><td>{item.fencing_token}</td><td className="identifier">{item.execution_id}</td><td>{labels[item.status]}</td><td>{resultText(item.result)}</td><td>{new Date(item.expires_at).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</td><td>{item.result ? <Link href={`/jobs/${jobId}/executions/${item.execution_id}`}>查看</Link> : "尚无提交"}</td></tr>)}
       </tbody></table></div> : <p>任务尚未被 Worker 领取。</p>}
       <nav>{executions.next_cursor && <Link href={`/jobs/${jobId}?after=${executions.next_cursor}`}>下一页 →</Link>}</nav>
-      <p className="note">租约期限不是完成时间。当前按执行序号分页；原始产物与轨迹查看将在下一切片接入。</p>
+      <p className="note">租约期限不是完成时间。当前按执行序号分页；已提交执行可查看产物索引和文本预览。</p>
     </section>
   </main>;
 }

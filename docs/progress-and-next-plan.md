@@ -91,3 +91,5 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 按这一路线，下一批最有价值的交付是“用户能在受控网页创建并查看单任务执行”。通用资产与持续调度随后推进，实验比较、Failure Mining、训练导出、高级 Pause/Resume/Fork 和 RL 后置。工期按每个切片验收后再估算，当前测试主机容量与网关生产条件不能作为已具备的前提。
 
 本批页面及查询验收见 [页面记录](validation/2026-10-06-s1-web.md)；后续按 [逐步实施计划](next-implementation.md) 推进。
+
+第二批已实现受控产物索引及 1 MiB 文本预览，真实 PostgreSQL/MinIO 权限、越界、篡改与预览边界通过；详见 [基础 Viewer 验收](validation/2026-10-06-viewer.md)。结构化轨迹投影尚未完成。

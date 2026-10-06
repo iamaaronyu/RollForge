@@ -4,6 +4,7 @@ import type { components } from "./api-types";
 export type JobList = components["schemas"]["JobList"];
 export type JobView = components["schemas"]["JobView"];
 export type ExecutionList = components["schemas"]["ExecutionList"];
+export type ArtifactIndex = components["schemas"]["ArtifactIndex"];
 export type TaskList = components["schemas"]["ApprovedTaskList"];
 export class HubProblem extends Error {
   constructor(public readonly status: number) {
@@ -14,7 +15,7 @@ export class HubProblem extends Error {
 }
 export const validId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 export const experimental = () => process.env.ROLLFORGE_WEB_ALLOW_EXPERIMENTAL_RUNS === "true";
-export async function hub<T>(path: string, body?: unknown): Promise<T> {
+async function request(path: string, body?: unknown): Promise<Response> {
   const token = process.env.ROLLFORGE_WEB_USER_TOKEN;
   if (!token) throw new HubProblem(401);
   let response: Response;
@@ -30,7 +31,15 @@ export async function hub<T>(path: string, body?: unknown): Promise<T> {
     });
   } catch { throw new HubProblem(503); }
   if (!response.ok) throw new HubProblem(response.status);
+  return response;
+}
+export async function hub<T>(path: string, body?: unknown): Promise<T> {
+  const response = await request(path, body);
   try { return await response.json() as T; } catch { throw new HubProblem(502); }
+}
+export async function hubText(path: string): Promise<string> {
+  const response = await request(path);
+  try { return await response.text(); } catch { throw new HubProblem(502); }
 }
 export function message(error: unknown): string {
   return error instanceof HubProblem ? error.message : "服务暂不可用，请稍后重试。";

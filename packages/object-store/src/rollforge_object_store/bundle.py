@@ -156,7 +156,7 @@ class BundlePublisher:
         self.store.put_immutable(scope.manifest_key, payload)
         return self.verify(scope, digest(payload))
 
-    def verify(self, scope: ExecutionScope, expected_digest: str) -> ResultCommit:
+    def inspect(self, scope: ExecutionScope, expected_digest: str) -> ArtifactManifest:
         payload = self.store.read(scope.manifest_key, maximum=4 * 1024 * 1024)
         if digest(payload) != expected_digest:
             raise ObjectConflict("Manifest 摘要不一致")
@@ -166,6 +166,10 @@ class BundlePublisher:
             raise ObjectStoreError("Manifest 契约无效") from None
         if manifest.scope != scope or canonical(manifest) != payload:
             raise ObjectConflict("Manifest 执行身份或规范格式不一致")
+        return manifest
+
+    def verify(self, scope: ExecutionScope, expected_digest: str) -> ResultCommit:
+        manifest = self.inspect(scope, expected_digest)
         result_bytes = None
         for file in manifest.files:
             data = self.store.read_verified(

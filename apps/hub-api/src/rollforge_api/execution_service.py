@@ -191,6 +191,32 @@ class ExecutionService:
                 next_cursor=rows[limit - 1].fencing_token if len(rows) > limit else None,
             )
 
+    async def accepted_execution(self, job_id: UUID, execution_id: UUID, owner_id: UUID):
+        from rollforge_schemas.storage import ExecutionScope
+
+        async with self.sessions() as session:
+            row = (
+                await session.execute(
+                    select(Trial.id, Execution.fencing_token, Execution.result)
+                    .join(Job, Job.id == Trial.job_id)
+                    .join(Execution, Execution.trial_id == Trial.id)
+                    .where(
+                        Job.id == job_id,
+                        Job.owner_id == owner_id,
+                        Execution.id == execution_id,
+                        Execution.result.is_not(None),
+                    )
+                )
+            ).first()
+            if row is None:
+                return None
+            return (
+                ExecutionScope(
+                    job_id=job_id, trial_id=row[0], execution_id=execution_id, fencing_token=row[1]
+                ),
+                ResultCommit.model_validate(row[2]),
+            )
+
     async def claim(
         self, worker_id: UUID, lease_seconds: int = 60, runnable_only: bool = False
     ) -> Lease | None:
