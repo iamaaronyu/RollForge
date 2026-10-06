@@ -13,7 +13,7 @@ from rollforge_schemas.api import (
     RenewRequest,
 )
 from rollforge_schemas.domain import HealthResponse
-from rollforge_schemas.execution import JobView, Lease, TrialView
+from rollforge_schemas.execution import ExecutionList, JobList, JobView, Lease, TrialView
 
 Model = TypeVar("Model", bound=BaseModel)
 
@@ -66,9 +66,9 @@ class HubClient:
             follow_redirects=False,
         )
 
-    async def _request(self, method: str, path: str, body=None):
+    async def _request(self, method: str, path: str, body=None, *, params=None):
         try:
-            response = await self._client.request(method, path, json=body)
+            response = await self._client.request(method, path, json=body, params=params)
         except httpx.RequestError:
             raise HubTransportError("Hub 网络请求失败") from None
         if not 200 <= response.status_code < 300:
@@ -97,6 +97,22 @@ class HubClient:
     async def get_job(self, job_id: UUID) -> JobView:
         response = await self._request("GET", f"/api/v1/jobs/{job_id}")
         return self._decode(response, JobView)
+
+    async def list_jobs(self, *, limit: int = 20, after: UUID | None = None) -> JobList:
+        params = {"limit": limit}
+        if after is not None:
+            params["after"] = str(after)
+        return self._decode(await self._request("GET", "/api/v1/jobs", params=params), JobList)
+
+    async def list_executions(
+        self, job_id: UUID, *, limit: int = 20, after: int = 0
+    ) -> ExecutionList:
+        return self._decode(
+            await self._request(
+                "GET", f"/api/v1/jobs/{job_id}/executions", params={"limit": limit, "after": after}
+            ),
+            ExecutionList,
+        )
 
     async def claim(self, body: ClaimRequest | None = None) -> Lease | None:
         response = await self._request(

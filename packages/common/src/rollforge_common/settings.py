@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -12,6 +14,7 @@ class Settings(BaseSettings):
     object_storage_endpoint: str = "http://localhost:9000"
     api_credentials: SecretStr = SecretStr("[]")
     control_plane_writes_enabled: bool = False
+    approved_tasks_file: Path | None = None
     object_storage_bucket: str = "rollforge"
     object_storage_access_key: SecretStr = SecretStr("")
     object_storage_secret_key: SecretStr = SecretStr("")

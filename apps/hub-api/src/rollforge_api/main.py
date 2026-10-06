@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from rollforge_api.auth import Authenticator
+from rollforge_api.catalog import load_catalog
 from rollforge_api.db import create_engine
 from rollforge_api.execution_service import LeaseRejected, SubmissionConflict
 from rollforge_api.routes import ApiFailure, router
@@ -35,6 +36,7 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
     app.state.settings = settings
     app.state.engine = engine
     app.state.auth = auth
+    app.state.approved_tasks = load_catalog(settings.approved_tasks_file)
     app.include_router(router)
 
     def error(status: int, code: ErrorCode, message: str):

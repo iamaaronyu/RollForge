@@ -11,10 +11,28 @@ export interface paths {
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly get?: never;
+        /** List Jobs */
+        readonly get: operations["list_jobs"];
         readonly put?: never;
         /** Create Job */
         readonly post: operations["create_job"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/jobs/from-approved-task": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Create Approved Job */
+        readonly post: operations["create_approved_job"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -38,6 +56,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/jobs/{job_id}/executions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Executions */
+        readonly get: operations["list_executions"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/platform": {
         readonly parameters: {
             readonly query?: never;
@@ -47,6 +82,23 @@ export interface paths {
         };
         /** Platform */
         readonly get: operations["platform_api_v1_platform_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/tasks/approved": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Approved Tasks */
+        readonly get: operations["approved_tasks"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -150,6 +202,28 @@ export interface components {
             /** Message */
             readonly message: string;
         };
+        /** ApprovedJobCreateRequest */
+        readonly ApprovedJobCreateRequest: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            readonly job_id: string;
+            /** Task Id */
+            readonly task_id: string;
+        };
+        /** ApprovedTask */
+        readonly ApprovedTask: {
+            /** Id */
+            readonly id: string;
+            /** Label */
+            readonly label: string;
+        };
+        /** ApprovedTaskList */
+        readonly ApprovedTaskList: {
+            /** Items */
+            readonly items: readonly components["schemas"]["ApprovedTask"][];
+        };
         /** ClaimRequest */
         readonly ClaimRequest: {
             /**
@@ -168,6 +242,13 @@ export interface components {
          * @enum {string}
          */
         readonly ErrorCode: "UNAUTHORIZED" | "FORBIDDEN" | "WRITES_DISABLED" | "NOT_FOUND" | "LEASE_REJECTED" | "CONFLICT" | "INVALID_REQUEST" | "DATABASE_UNAVAILABLE" | "STORAGE_UNAVAILABLE";
+        /** ExecutionList */
+        readonly ExecutionList: {
+            /** Items */
+            readonly items: readonly components["schemas"]["ExecutionView"][];
+            /** Next Cursor */
+            readonly next_cursor?: number | null;
+        };
         /** ExecutionSnapshot */
         readonly ExecutionSnapshot: {
             readonly agent: components["schemas"]["RevisionRef"];
@@ -190,6 +271,28 @@ export interface components {
              * @default 300
              */
             readonly timeout_sec: number;
+        };
+        /**
+         * ExecutionStatus
+         * @enum {string}
+         */
+        readonly ExecutionStatus: "RUNNING" | "COMPLETED" | "FAILED" | "EXPIRED";
+        /** ExecutionView */
+        readonly ExecutionView: {
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            readonly execution_id: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            readonly expires_at: string;
+            /** Fencing Token */
+            readonly fencing_token: number;
+            readonly result?: components["schemas"]["ResultCommit"] | null;
+            readonly status: components["schemas"]["ExecutionStatus"];
         };
         /**
          * FailureReason
@@ -218,6 +321,22 @@ export interface components {
              */
             readonly job_id: string;
             readonly snapshot: components["schemas"]["ExecutionSnapshot"];
+        };
+        /** JobList */
+        readonly JobList: {
+            /** Items */
+            readonly items: readonly components["schemas"]["JobSummary"][];
+            /** Next Cursor */
+            readonly next_cursor?: string | null;
+        };
+        /** JobSummary */
+        readonly JobSummary: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            readonly job_id: string;
+            readonly trial: components["schemas"]["TrialView"];
         };
         /** JobView */
         readonly JobView: {
@@ -401,6 +520,83 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    readonly list_jobs: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+                readonly after?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["JobList"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     readonly create_job: {
         readonly parameters: {
             readonly query?: never;
@@ -411,6 +607,84 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": components["schemas"]["JobCreateRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    readonly create_approved_job: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ApprovedJobCreateRequest"];
             };
         };
         readonly responses: {
@@ -555,6 +829,85 @@ export interface operations {
             };
         };
     };
+    readonly list_executions: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+                readonly after?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly job_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ExecutionList"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     readonly platform_api_v1_platform_get: {
         readonly parameters: {
             readonly query?: never;
@@ -571,6 +924,80 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": unknown;
+                };
+            };
+        };
+    };
+    readonly approved_tasks: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApprovedTaskList"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
                 };
             };
         };

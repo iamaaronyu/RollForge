@@ -2,12 +2,15 @@ import asyncio
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from rollforge_object_store.bundle import BundlePublisher
 from rollforge_object_store.s3 import ObjectStoreError, S3ObjectStore
 from rollforge_schemas.api import (
     ApiError,
+    ApprovedJobCreateRequest,
+    ApprovedTask,
+    ApprovedTaskList,
     ClaimRequest,
     ErrorCode,
     FinishRequest,
@@ -17,7 +20,15 @@ from rollforge_schemas.api import (
     RenewRequest,
     Role,
 )
-from rollforge_schemas.execution import CreateJob, JobView, Lease, LeaseIdentity, TrialView
+from rollforge_schemas.execution import (
+    CreateJob,
+    ExecutionList,
+    JobList,
+    JobView,
+    Lease,
+    LeaseIdentity,
+    TrialView,
+)
 from rollforge_schemas.storage import ExecutionScope
 
 from rollforge_api.execution_service import ExecutionService
@@ -86,6 +97,64 @@ async def create_job(body: JobCreateRequest, identity: User, _gate: WriteGate, s
             snapshot=body.snapshot,
         )
     )
+
+
+@router.get(
+    "/tasks/approved", response_model=ApprovedTaskList, tags=["jobs"], operation_id="approved_tasks"
+)
+async def approved_tasks(identity: User, request: Request):
+    return ApprovedTaskList(
+        items=tuple(
+            ApprovedTask(id=item.id, label=item.label)
+            for item in request.app.state.approved_tasks.values()
+        )
+    )
+
+
+@router.post(
+    "/jobs/from-approved-task",
+    response_model=JobView,
+    tags=["jobs"],
+    operation_id="create_approved_job",
+)
+async def create_approved_job(
+    body: ApprovedJobCreateRequest, identity: User, _gate: WriteGate, store: Store, request: Request
+):
+    item = request.app.state.approved_tasks.get(body.task_id)
+    if item is None:
+        raise ApiFailure(404, ErrorCode.NOT_FOUND, "任务未配置或未审核")
+    return await store.create_job(
+        CreateJob(job_id=body.job_id, owner_id=identity.subject_id, snapshot=item.snapshot)
+    )
+
+
+@router.get("/jobs", response_model=JobList, tags=["jobs"], operation_id="list_jobs")
+async def list_jobs(
+    identity: User,
+    store: Store,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    after: UUID | None = None,
+):
+    return await store.list_jobs(identity.subject_id, limit, after)
+
+
+@router.get(
+    "/jobs/{job_id}/executions",
+    response_model=ExecutionList,
+    tags=["jobs"],
+    operation_id="list_executions",
+)
+async def list_executions(
+    job_id: UUID,
+    identity: User,
+    store: Store,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    after: Annotated[int, Query(ge=0)] = 0,
+):
+    result = await store.list_executions(job_id, identity.subject_id, limit, after)
+    if result is None:
+        raise ApiFailure(404, ErrorCode.NOT_FOUND, "Job 不存在")
+    return result
 
 
 @router.get("/jobs/{job_id}", response_model=JobView, tags=["jobs"], operation_id="get_job")

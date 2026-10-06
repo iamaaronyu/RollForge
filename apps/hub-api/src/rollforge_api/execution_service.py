@@ -7,8 +7,12 @@ from uuid import UUID, uuid4
 from rollforge_schemas.domain import TrialStatus
 from rollforge_schemas.execution import (
     CreateJob,
+    ExecutionList,
     ExecutionSnapshot,
     ExecutionStatus,
+    ExecutionView,
+    JobList,
+    JobSummary,
     JobView,
     Lease,
     LeaseIdentity,
@@ -123,6 +127,69 @@ class ExecutionService:
                 return None
             await session.scalar(select(Trial).where(Trial.job_id == job_id).with_for_update())
             return await self.view(session, job)
+
+    async def list_jobs(self, owner_id: UUID, limit: int = 20, after: UUID | None = None):
+        query = (
+            select(Job.id, Trial, Execution.result)
+            .join(Trial, Trial.job_id == Job.id)
+            .outerjoin(
+                Execution,
+                (Execution.trial_id == Trial.id) & (Execution.fencing_token == Trial.fencing_token),
+            )
+            .where(Job.owner_id == owner_id)
+            .order_by(Job.id)
+            .limit(limit + 1)
+        )
+        if after is not None:
+            query = query.where(Job.id > after)
+        async with self.sessions() as session:
+            rows = (await session.execute(query)).all()
+        return JobList(
+            items=tuple(
+                JobSummary(
+                    job_id=job_id,
+                    trial=TrialView(
+                        job_id=job_id,
+                        trial_id=trial.id,
+                        status=trial.status,
+                        fencing_token=trial.fencing_token,
+                        result=ResultCommit.model_validate(result) if result else None,
+                    ),
+                )
+                for job_id, trial, result in rows[:limit]
+            ),
+            next_cursor=rows[limit - 1][0] if len(rows) > limit else None,
+        )
+
+    async def list_executions(self, job_id: UUID, owner_id: UUID, limit: int = 20, after: int = 0):
+        async with self.sessions() as session:
+            exists = await session.scalar(
+                select(Job.id).where(Job.id == job_id, Job.owner_id == owner_id)
+            )
+            if exists is None:
+                return None
+            rows = (
+                await session.scalars(
+                    select(Execution)
+                    .join(Trial, Execution.trial_id == Trial.id)
+                    .where(Trial.job_id == job_id, Execution.fencing_token > after)
+                    .order_by(Execution.fencing_token)
+                    .limit(limit + 1)
+                )
+            ).all()
+            return ExecutionList(
+                items=tuple(
+                    ExecutionView(
+                        execution_id=row.id,
+                        fencing_token=row.fencing_token,
+                        status=row.status,
+                        expires_at=row.expires_at,
+                        result=ResultCommit.model_validate(row.result) if row.result else None,
+                    )
+                    for row in rows[:limit]
+                ),
+                next_cursor=rows[limit - 1].fencing_token if len(rows) > limit else None,
+            )
 
     async def claim(
         self, worker_id: UUID, lease_seconds: int = 60, runnable_only: bool = False

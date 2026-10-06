@@ -2,7 +2,7 @@
 
 开源 Agent Rollout 与评测平台。复用 Harbor 执行任务、E2B 提供 Sandbox，自研实验控制面与轨迹、产物、评分数据层。
 
-**当前状态：S0 受限环境验收完成，S1 前五个切片及真实单 Trial 主链已通过，业务页面与持续调度待开发。** 已实现 PostgreSQL 执行权、鉴权 API/SDK、固定 Runtime Worker、不可变对象存储与提交恢复；真实评分、零分、协作取消后 Retry 通过。正式执行入口仍关闭，实验网关不满足生产条件，本轮 Linux 临时网络策略恢复待复核。完整进展与后续顺序见 [开发进展与后续计划](docs/progress-and-next-plan.md)。
+**当前状态：S0 受限环境验收完成，S1 单 Trial 主链已通过，中文任务页面与查询已实现，持续调度待开发。** 已实现 PostgreSQL 执行权、鉴权 API/SDK、固定 Runtime Worker、不可变对象存储与提交恢复；真实评分、零分、协作取消后 Retry 通过。正式执行入口仍关闭，实验网关不满足生产条件，本轮 Linux 临时网络策略已恢复并复核。页面配置见 [本机任务界面](docs/web-console.md)，逐步实施进度见 [实施计划](docs/next-implementation.md)。完整进展与后续顺序见 [开发进展与后续计划](docs/progress-and-next-plan.md)。
 
 首个验证组合为 **Claude Code + DeepSeek V4.1 Flash + 自托管 E2B**。默认使用 DeepSeek 官方 Anthropic 兼容接口；其他服务商必须单独确认协议与模型标识。
 

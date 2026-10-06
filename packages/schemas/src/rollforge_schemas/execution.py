@@ -101,6 +101,29 @@ class JobView(Contract):
     trial: TrialView
 
 
+class JobSummary(Contract):
+    job_id: UUID
+    trial: TrialView
+
+
+class JobList(Contract):
+    items: tuple[JobSummary, ...]
+    next_cursor: UUID | None = None
+
+
+class ExecutionView(Contract):
+    execution_id: UUID
+    fencing_token: int = Field(ge=1)
+    status: ExecutionStatus
+    expires_at: datetime
+    result: ResultCommit | None = None
+
+
+class ExecutionList(Contract):
+    items: tuple[ExecutionView, ...]
+    next_cursor: int | None = None
+
+
 def validate_execution_transition(current: ExecutionStatus, target: ExecutionStatus) -> None:
     if current == target:
         return

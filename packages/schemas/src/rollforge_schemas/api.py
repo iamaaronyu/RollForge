@@ -27,6 +27,24 @@ class JobCreateRequest(Contract):
     snapshot: ExecutionSnapshot
 
 
+class ApprovedTask(Contract):
+    id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,64}$")
+    label: str = Field(min_length=1, max_length=120)
+
+
+class ApprovedTaskBinding(ApprovedTask):
+    snapshot: ExecutionSnapshot
+
+
+class ApprovedTaskList(Contract):
+    items: tuple[ApprovedTask, ...]
+
+
+class ApprovedJobCreateRequest(Contract):
+    job_id: UUID
+    task_id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,64}$")
+
+
 class ClaimRequest(Contract):
     lease_seconds: int = Field(default=60, ge=1, le=300, strict=True)
     runnable_only: bool = False

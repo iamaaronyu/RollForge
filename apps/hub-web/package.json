@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
-    "start": "next start",
+    "start": "next start --hostname 127.0.0.1",
     "typecheck": "npm run api-types:check && next typegen && tsc --noEmit",
     "api-types": "openapi-typescript ../../docs/openapi.json -o lib/api-types.ts --immutable",
     "api-types:check": "openapi-typescript ../../docs/openapi.json -o lib/api-types.ts --immutable --check"

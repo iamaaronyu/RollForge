@@ -1,12 +1,12 @@
 # 开发进展与后续计划
 
-更新日期：2026-10-06。依据已提交代码、专项验收记录及 fcbd6c9；本文汇总当前事实和建议开发顺序，不把实验验收等同于生产开放。
+更新日期：2026-10-06。依据已提交代码、专项验收记录及后续页面实现；本文汇总当前事实和建议开发顺序，不把实验验收等同于生产开放。
 
 ## 当前结论
 
-RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → PostgreSQL 执行权 → Worker → 固定 Harbor/E2B → Claude Code → 受限 DeepSeek 会话 → 独立 Verifier → MinIO 原始产物 → Hub 终态。S0 在可信局域网、审核任务、并发 1 范围完成；S1 六个切片中的前五个已有实现与对应验收，第六个业务页面未完成。
+RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → PostgreSQL 执行权 → Worker → 固定 Harbor/E2B → Claude Code → 受限 DeepSeek 会话 → 独立 Verifier → MinIO 原始产物 → Hub 终态。S0 在可信局域网、审核任务、并发 1 范围完成；S1 单 Trial 核心及第六个最小业务页面已实现；页面用合成数据完成真实浏览器/数据库往返，执行侧已有独立真实模型验收。
 
-当前是可复现的实验执行底座。网页仍为基础状态页，Scheduler 仍为骨架；没有通用 Registry、批量实验、用户登录或生产网关。正式执行入口保持关闭。最新 Worker 记录标记 Linux 临时网络策略恢复待 owner 执行与复核；不能把 Sandbox 已清理理解为网络策略已恢复。
+当前是可复现的实验执行底座。网页已支持受控单任务创建、列表、评分与执行历史，Scheduler 仍为骨架；没有通用 Registry、批量实验、用户登录或生产网关。正式执行入口保持关闭。最新 Worker 记录已独立确认 Linux 临时网络策略恢复、原配置未改变且临时规则为 0。
 
 ## 已完成的开发项
 
@@ -28,21 +28,21 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 | Hub 联合恢复 | 实际提交后响应丢失，重建应用/SDK，租约过期且 Manifest 删除后幂等返回；旧产物无法绕过新执行权 | 真实 PostgreSQL/MinIO 与鉴权 API；应用重建不等同于宿主掉电 |
 | Worker | 单次领取、续租、任务归档校验、凭证白名单、独立 Runtime、上传与 pending-commit、resume | 真实 HTTP 主链通过；修复 venv 解释器解析和 Mac 系统代理问题 |
 | 真实 Worker 故障验收 | reward 1.0、0.0、提交响应丢失后恢复、协作式取消清理、同 Trial 新 Execution Retry、旧提交 409 | Sandbox/Firecracker 均为 0；协作取消不代表 Worker/Runtime SIGKILL 或掉电清理已通过 |
-| 前端基础 | Next.js 基础状态页、生成类型、TypeScript 与生产构建 | 尚不能在网页创建 Job、查看执行历史或轨迹 |
+| 前端业务页 | 中文任务创建/列表/详情、服务端审核目录、Execution 历史与生成类型 | 合成数据浏览器验收通过；仍无登录、轮询和轨迹 Viewer |
 
-最新真实主链提交记录为 `make check` 140 项全部通过、无跳过，`make runtime-check` 9 项通过。该数字是有相应环境时的历史验收证据；普通检查未提供数据库/MinIO 时会跳过专项，不能据此声称再次通过真实集成。
+真实主链提交记录为 `make check` 140 项全部通过、无跳过，`make runtime-check` 9 项通过。该数字是有相应环境时的历史验收证据；普通检查未提供数据库/MinIO 时会跳过专项，不能据此声称再次通过真实集成。
 
 证据入口：[S0 隔离与恢复](validation/2026-10-06-isolation-recovery.md)、[数据库](validation/2026-10-06-s1-postgres.md)、[API/SDK](validation/2026-10-06-s1-api.md)、[对象存储与联合恢复](validation/2026-10-06-s1-storage.md)、[真实 Worker](validation/2026-10-06-s1-worker.md)。早期验收文档保留当时尚未实现的历史边界；当前结论以上述最新记录和代码为准。
 
 ## 建议的后续开发顺序
 
-### 0. 先完成本轮环境收尾
+### 0. 本轮环境收尾（已完成）
 
 执行并复核 Linux 网络 restore：本轮 /32 放行与专属端口规则已撤销，原配置恢复，E2B 健康、无活动 Sandbox/Firecracker。核对私密会话撤销及临时服务清理，更新最新验收记录。
 
 验收：提供恢复后的只读检查结果。维持正式入口关闭，不以新的前端或调度功能绕过运行环境条件。
 
-### 1. 收口 S1：最小业务页面
+### 1. 最小业务页面（本批已实现）
 
 先为经审核的固定 Task/Agent/Model 提供单 Trial 创建页、Job 查询页、状态与评分/失败原因、Execution 历史。页面通过服务端调用 Hub，静态 token 不进浏览器或公开前端变量。创建只选择服务端已审核绑定，不接受自由输入网关 URL、对象键或环境变量。入口关闭时明确展示原因。
 
@@ -89,3 +89,5 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 每个切片顺序：明确不变量与验收 → 共享契约/迁移 → 服务与鉴权 → OpenAPI/消费者 → 真实数据库/存储验证 → 涉及主链则真实 Harbor/E2B/模型验收 → make check 与必要的 runtime-check → 凭证及公开适宜性审查 → 独立正常 commit/push → 更新证据。
 
 按这一路线，下一批最有价值的交付是“用户能在受控网页创建并查看单任务执行”。通用资产与持续调度随后推进，实验比较、Failure Mining、训练导出、高级 Pause/Resume/Fork 和 RL 后置。工期按每个切片验收后再估算，当前测试主机容量与网关生产条件不能作为已具备的前提。
+
+本批页面及查询验收见 [页面记录](validation/2026-10-06-s1-web.md)；后续按 [逐步实施计划](next-implementation.md) 推进。
