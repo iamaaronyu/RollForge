@@ -46,5 +46,10 @@
     "host_hugepages": 1024,
     "default_free_disk_size_mb": 2048,
     "max_length_hours": 24
-  }
+  },
+  "credential_isolation_validated": false,
+  "private_verifier_validated": true,
+  "deployment_restart_validated": true,
+  "host_reboot_validated": false,
+  "isolation_validation_report": "docs/validation/2026-10-06-isolation-recovery.md"
 }

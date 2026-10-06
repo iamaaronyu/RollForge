@@ -68,3 +68,5 @@ tests/                    单元、集成与真实 E2E 验收要求
 文档入口：[架构](docs/architecture.md)、[开发规范](docs/development.md)、[API](docs/api.md)、[兼容性](docs/compatibility.md)、[实施计划](docs/implementation-plan.md)、[路线图](docs/roadmap.md)。
 
 开源许可证尚未确定；仓库公开不等于已授予软件使用许可。
+
+凭证隔离与部署恢复的最新状态见 [专项验收记录](docs/validation/2026-10-06-isolation-recovery.md)：独立 Verifier 与服务恢复通过，真实模型 Key 的 Agent 隔离仍未通过。当前直接 API 样例只用于可信测试任务，Hub 执行入口保持关闭。

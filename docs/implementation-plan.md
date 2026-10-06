@@ -37,3 +37,5 @@
 2026-10-06：Linux/KVM 环境已部署，Claude Code + DeepSeek 的两个样例评分均为 1.0，轨迹、产物和清理已验证。详见 [基础真实验收记录](validation/2026-10-06-e2b.md)。
 
 当前为 8 GiB 主机上的小样例实验，不能作为一般任务容量承诺。六项零分、Agent/Verifier 故障、超时与协作式取消验收已通过，每项结束后 Sandbox 数量为 0。继续补齐 S0 的私密凭证隔离、重复清理与部署恢复关卡，再开展 S1 持久化执行和鉴权。高级 Sandbox、Failure Mining 与训练集成在可靠用户闭环之后开展。
+
+2026-10-06 专项验收：独立 Verifier 与部署停止/启动恢复通过；直接模型 API 模式下 Agent 工具可读真实 Key，模型网关的 Sandbox 网络链路尚未通过。S0 不标记完成，S1 暂不开始。主机重启复检需要 owner 执行重启。详见 [隔离与恢复记录](validation/2026-10-06-isolation-recovery.md)。
