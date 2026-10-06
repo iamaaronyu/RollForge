@@ -13,7 +13,7 @@
 | `POST /api/v1/worker/leases/renew` | WORKER 续租；校验身份、执行 ID、token 和有效期 |
 | `POST /api/v1/worker/leases/finish` | WORKER 提交结果元数据；同一结果可幂等重放 |
 
-业务接口已实现，控制面写接口默认关闭。ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED 默认为 false；关闭时创建、领取、续租、完成返回 503 / WRITES_DISABLED。GET 查询仍需认证。真实 Worker 尚未接入，platform 的 execution_enabled 保持 false，control_plane_writes_enabled 单独报告元数据写开关，不表示完成 S0 或开放真实执行。
+业务接口已实现，控制面写接口默认关闭。ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED 默认为 false；关闭时创建、领取、续租、完成返回 503 / WRITES_DISABLED。GET 查询仍需认证。Worker 执行与恢复实现见 [Worker 说明](worker.md)，真实全链验收尚未完成，platform 的 execution_enabled 保持 false，control_plane_writes_enabled 单独报告元数据写开关，不表示完成 S0 或开放真实执行。
 
 ## 认证与权限
 
@@ -25,9 +25,9 @@
 
 ## 请求、错误与 SDK
 
-请求与响应定义在 packages/schemas。创建只接受 job_id 和 snapshot。续租接受 lease（trial_id、execution_id、fencing_token）及 lease_seconds；完成接受 lease 和 result。租约时间范围为 1–300 秒。每个结果的 manifest_key 必须匹配对应 Execution 的对象路径；对象内容存在性与摘要检查仍待真实 Worker/对象存储接入。
+请求与响应定义在 packages/schemas。创建只接受 job_id 和 snapshot。续租接受 lease（trial_id、execution_id、fencing_token）及 lease_seconds；完成接受 lease 和 result。租约时间范围为 1–300 秒。每个结果的 manifest_key 必须匹配对应 Execution 的对象路径；可运行快照的提交会验证对象内容、摘要、作用域和 fencing token；元数据快照仍仅校验对象键，不代表真实运行完成。claim 可设置 runnable_only=true，仅领取存在 runtime 绑定的 Trial。
 
-错误体为 ApiError：code 和中文 message。409 区分 CONFLICT（幂等内容冲突）和 LEASE_REJECTED（执行权无效）；422 不回显非法字段或输入值；数据库错误返回 503 / DATABASE_UNAVAILABLE，不输出 SQL 或连接信息。
+错误体为 ApiError：code 和中文 message。409 区分 CONFLICT（幂等内容冲突）和 LEASE_REJECTED（执行权无效）；422 不回显非法字段或输入值；数据库错误返回 503 / DATABASE_UNAVAILABLE，不输出 SQL 或连接信息。对象存储验证失败返回 503 / STORAGE_UNAVAILABLE，且不提交终态。
 
 Python SDK 的 HubClient 提供 create_job、get_job、claim、renew、finish，以及异步上下文管理。token 使用 SecretStr 传入。空队列转换为 None；HubError 提供 status_code 和经契约校验的 code。SDK 不跟随重定向，不把原始错误响应、认证头或网络异常消息附加到异常。
 
@@ -42,6 +42,6 @@ make check
 
 make check 和 CI 检查实际 API 与导出文件一致，前端 typecheck 检查生成类型未过期；修改接口后需同时提交生成文件。实测结果见 [鉴权 API 与 SDK 验收](validation/2026-10-06-s1-api.md)。
 
-健康响应不包含连接字符串或原始基础设施错误。当前 API 尚未依赖 Redis 和对象存储，因此未将其纳入就绪检查。
+健康响应不包含连接字符串或原始基础设施错误。当前就绪检查仍只检查数据库；可运行结果提交依赖对象存储，Redis 尚未接入。
 
 开发 API 绑定本机回环地址；完成鉴权与生产部署加固后再向外提供服务。

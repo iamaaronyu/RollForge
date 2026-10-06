@@ -29,6 +29,7 @@ class JobCreateRequest(Contract):
 
 class ClaimRequest(Contract):
     lease_seconds: int = Field(default=60, ge=1, le=300, strict=True)
+    runnable_only: bool = False
 
 
 class LeaseReference(Contract):
@@ -56,6 +57,7 @@ class ErrorCode(StrEnum):
     CONFLICT = "CONFLICT"
     INVALID_REQUEST = "INVALID_REQUEST"
     DATABASE_UNAVAILABLE = "DATABASE_UNAVAILABLE"
+    STORAGE_UNAVAILABLE = "STORAGE_UNAVAILABLE"
 
 
 class ApiError(Contract):

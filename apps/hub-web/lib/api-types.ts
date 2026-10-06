@@ -157,12 +157,17 @@ export interface components {
              * @default 60
              */
             readonly lease_seconds: number;
+            /**
+             * Runnable Only
+             * @default false
+             */
+            readonly runnable_only: boolean;
         };
         /**
          * ErrorCode
          * @enum {string}
          */
-        readonly ErrorCode: "UNAUTHORIZED" | "FORBIDDEN" | "WRITES_DISABLED" | "NOT_FOUND" | "LEASE_REJECTED" | "CONFLICT" | "INVALID_REQUEST" | "DATABASE_UNAVAILABLE";
+        readonly ErrorCode: "UNAUTHORIZED" | "FORBIDDEN" | "WRITES_DISABLED" | "NOT_FOUND" | "LEASE_REJECTED" | "CONFLICT" | "INVALID_REQUEST" | "DATABASE_UNAVAILABLE" | "STORAGE_UNAVAILABLE";
         /** ExecutionSnapshot */
         readonly ExecutionSnapshot: {
             readonly agent: components["schemas"]["RevisionRef"];
@@ -172,6 +177,7 @@ export interface components {
              */
             readonly max_executions: number;
             readonly model: components["schemas"]["RevisionRef"];
+            readonly runtime?: components["schemas"]["RunnableBinding"] | null;
             /**
              * Schema Version
              * @default 1
@@ -242,6 +248,11 @@ export interface components {
             readonly expires_at: string;
             /** Fencing Token */
             readonly fencing_token: number;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            readonly job_id: string;
             readonly snapshot: components["schemas"]["ExecutionSnapshot"];
             /**
              * Trial Id
@@ -307,6 +318,51 @@ export interface components {
             readonly id: string;
             /** Revision */
             readonly revision: number;
+        };
+        /** RunnableBinding */
+        readonly RunnableBinding: {
+            /**
+             * Agent Name
+             * @default claude-code
+             * @constant
+             */
+            readonly agent_name: "claude-code";
+            /**
+             * Agent Version
+             * @default 2.1.81
+             * @constant
+             */
+            readonly agent_version: "2.1.81";
+            /**
+             * Credential Mode
+             * @default gateway-session
+             * @constant
+             */
+            readonly credential_mode: "gateway-session";
+            /** Model Base Url */
+            readonly model_base_url: string;
+            /**
+             * Model Name
+             * @default deepseek-flash
+             * @constant
+             */
+            readonly model_name: "deepseek-flash";
+            /**
+             * Protocol
+             * @default anthropic-messages
+             * @constant
+             */
+            readonly protocol: "anthropic-messages";
+            /** Task Archive Digest */
+            readonly task_archive_digest: string;
+            /** Task Archive Key */
+            readonly task_archive_key: string;
+            /**
+             * Verifier Mode
+             * @default separate
+             * @constant
+             */
+            readonly verifier_mode: "separate";
         };
         /**
          * TrialStatus

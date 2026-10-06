@@ -14,7 +14,7 @@ test:
 	uv run pytest
 postgres-check:
 	@test -n "$$ROLLFORGE_TEST_DATABASE_URL" || (echo "需要设置专用 PostgreSQL 测试地址 ROLLFORGE_TEST_DATABASE_URL"; exit 2)
-	uv run pytest tests/integration/test_execution_postgres.py tests/integration/test_job_api_postgres.py
+	uv run pytest tests/integration/test_execution_postgres.py tests/integration/test_job_api_postgres.py tests/integration/test_worker_postgres.py
 api-types:
 	uv run python scripts/export_openapi.py
 	npm --prefix apps/hub-web run api-types

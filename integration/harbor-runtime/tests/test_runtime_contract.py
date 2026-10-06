@@ -93,3 +93,31 @@ def test_real_harbor_e2b_provider_can_load_pinned_sdk():
 
     assert _HAS_E2B is True
     assert E2BEnvironment.type().value == "e2b"
+
+
+def test_worker_requires_explicit_separate_verifier_with_real_harbor(tmp_path):
+    import shutil
+
+    from rollforge_harbor_adapter.worker_runtime import validated_task
+
+    directory = tmp_path / "task"
+    shutil.copytree(ROOT / "examples/tasks/coding-task", directory)
+    spec = RuntimeSpec(
+        agent="claude-code",
+        agent_version="2.1.81",
+        protocol="anthropic-messages",
+        model_name="deepseek-flash",
+        model_base_url="https://gateway.invalid",
+        task_dir=directory,
+        output_dir=tmp_path / "native",
+    )
+    with pytest.raises(ValueError, match="separate verifier"):
+        validated_task(spec)
+    config = directory / "task.toml"
+    config.write_text(
+        config.read_text().replace("[verifier]", '[verifier]\nenvironment_mode = "separate"')
+    )
+    assert validated_task(spec).config.verifier.environment_mode.value == "separate"
+    trial = build_trial_config(spec, "trial")
+    assert trial.agent.kwargs["version"] == "2.1.81"
+    assert trial.environment.delete is True

@@ -833,6 +833,7 @@ dependencies = [
     { name = "asyncpg" },
     { name = "fastapi" },
     { name = "rollforge-common" },
+    { name = "rollforge-object-store" },
     { name = "rollforge-schemas" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn", extra = ["standard"] },
@@ -844,6 +845,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.30,<1" },
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "rollforge-common", editable = "packages/common" },
+    { name = "rollforge-object-store", editable = "packages/object-store" },
     { name = "rollforge-schemas", editable = "packages/schemas" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0,<3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34,<1" },
@@ -943,17 +945,21 @@ name = "rollforge-worker"
 version = "0.1.0"
 source = { editable = "services/worker" }
 dependencies = [
+    { name = "python-dotenv" },
     { name = "rollforge-common" },
     { name = "rollforge-harbor-adapter" },
     { name = "rollforge-hub-sdk" },
+    { name = "rollforge-object-store" },
     { name = "rollforge-schemas" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "python-dotenv", specifier = ">=1.2,<2" },
     { name = "rollforge-common", editable = "packages/common" },
     { name = "rollforge-harbor-adapter", editable = "packages/harbor-adapter" },
     { name = "rollforge-hub-sdk", editable = "packages/hub-sdk" },
+    { name = "rollforge-object-store", editable = "packages/object-store" },
     { name = "rollforge-schemas", editable = "packages/schemas" },
 ]
 

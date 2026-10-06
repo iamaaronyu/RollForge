@@ -1,8 +1,11 @@
+import asyncio
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from rollforge_object_store.bundle import BundlePublisher
+from rollforge_object_store.s3 import ObjectStoreError, S3ObjectStore
 from rollforge_schemas.api import (
     ApiError,
     ClaimRequest,
@@ -15,6 +18,7 @@ from rollforge_schemas.api import (
     Role,
 )
 from rollforge_schemas.execution import CreateJob, JobView, Lease, LeaseIdentity, TrialView
+from rollforge_schemas.storage import ExecutionScope
 
 from rollforge_api.execution_service import ExecutionService
 
@@ -100,7 +104,7 @@ async def get_job(job_id: UUID, identity: User, store: Store):
     responses={204: {"description": "没有可领取的 Trial"}},
 )
 async def claim(body: ClaimRequest, identity: Worker, _gate: WriteGate, store: Store):
-    lease = await store.claim(identity.subject_id, body.lease_seconds)
+    lease = await store.claim(identity.subject_id, body.lease_seconds, body.runnable_only)
     return lease if lease is not None else Response(status_code=204)
 
 
@@ -114,5 +118,39 @@ async def renew(body: RenewRequest, identity: Worker, _gate: WriteGate, store: S
 @router.post(
     "/worker/leases/finish", response_model=TrialView, tags=["worker"], operation_id="finish_lease"
 )
-async def finish(body: FinishRequest, identity: Worker, _gate: WriteGate, store: Store):
-    return await store.finish(owned(body.lease, identity), body.result)
+async def finish(
+    body: FinishRequest, identity: Worker, _gate: WriteGate, store: Store, request: Request
+):
+    async def verify(lease, result):
+        settings = request.app.state.settings
+        if (
+            not settings.object_storage_access_key.get_secret_value()
+            or not settings.object_storage_secret_key.get_secret_value()
+        ):
+            raise ObjectStoreError("对象存储尚未配置")
+        try:
+            objects = S3ObjectStore(
+                settings.object_storage_endpoint,
+                settings.object_storage_bucket,
+                settings.object_storage_access_key,
+                settings.object_storage_secret_key,
+                allow_local_http=settings.object_storage_allow_local_http,
+            )
+        except ValueError:
+            raise ObjectStoreError("对象存储配置无效") from None
+        try:
+            scope = ExecutionScope(
+                job_id=lease.job_id,
+                trial_id=lease.trial_id,
+                execution_id=lease.execution_id,
+                fencing_token=lease.fencing_token,
+            )
+            verified = await asyncio.to_thread(
+                BundlePublisher(objects, sensitive_values=()).verify, scope, result.manifest_digest
+            )
+            if verified != result:
+                raise ObjectStoreError("提交结果与已上传 Manifest 不一致")
+        finally:
+            objects.close()
+
+    return await store.finish(owned(body.lease, identity), body.result, verifier=verify)

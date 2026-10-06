@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rollforge_schemas.domain import RevisionRef, TrialStatus
+from rollforge_schemas.runnable import RunnableBinding
 from rollforge_schemas.runtime import ResultOutcome
 
 
@@ -22,6 +23,16 @@ class ExecutionSnapshot(Contract):
     model: RevisionRef
     timeout_sec: int = Field(default=300, ge=1, le=3600)
     max_executions: int = Field(default=3, ge=1, le=10)
+    runtime: RunnableBinding | None = None
+
+    @model_validator(mode="after")
+    def pinned_binding(self):
+        if self.runtime and (
+            self.agent.digest != self.runtime.agent_digest
+            or self.model.digest != self.runtime.model_digest
+        ):
+            raise ValueError("Agent/model revisions must match runnable binding")
+        return self
 
 
 class CreateJob(Contract):
@@ -52,6 +63,7 @@ class LeaseIdentity(Contract):
 
 
 class Lease(LeaseIdentity):
+    job_id: UUID
     expires_at: datetime
     snapshot: ExecutionSnapshot
 

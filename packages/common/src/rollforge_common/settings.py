@@ -12,3 +12,7 @@ class Settings(BaseSettings):
     object_storage_endpoint: str = "http://localhost:9000"
     api_credentials: SecretStr = SecretStr("[]")
     control_plane_writes_enabled: bool = False
+    object_storage_bucket: str = "rollforge"
+    object_storage_access_key: SecretStr = SecretStr("")
+    object_storage_secret_key: SecretStr = SecretStr("")
+    object_storage_allow_local_http: bool = False

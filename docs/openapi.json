@@ -28,6 +28,11 @@
             "minimum": 1.0,
             "title": "Lease Seconds",
             "type": "integer"
+          },
+          "runnable_only": {
+            "default": false,
+            "title": "Runnable Only",
+            "type": "boolean"
           }
         },
         "title": "ClaimRequest",
@@ -42,7 +47,8 @@
           "LEASE_REJECTED",
           "CONFLICT",
           "INVALID_REQUEST",
-          "DATABASE_UNAVAILABLE"
+          "DATABASE_UNAVAILABLE",
+          "STORAGE_UNAVAILABLE"
         ],
         "title": "ErrorCode",
         "type": "string"
@@ -62,6 +68,16 @@
           },
           "model": {
             "$ref": "#/components/schemas/RevisionRef"
+          },
+          "runtime": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunnableBinding"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "schema_version": {
             "const": "1",
@@ -204,6 +220,11 @@
             "title": "Fencing Token",
             "type": "integer"
           },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
           "snapshot": {
             "$ref": "#/components/schemas/ExecutionSnapshot"
           },
@@ -223,6 +244,7 @@
           "execution_id",
           "worker_id",
           "fencing_token",
+          "job_id",
           "expires_at",
           "snapshot"
         ],
@@ -360,6 +382,68 @@
           "digest"
         ],
         "title": "RevisionRef",
+        "type": "object"
+      },
+      "RunnableBinding": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_name": {
+            "const": "claude-code",
+            "default": "claude-code",
+            "title": "Agent Name",
+            "type": "string"
+          },
+          "agent_version": {
+            "const": "2.1.81",
+            "default": "2.1.81",
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "credential_mode": {
+            "const": "gateway-session",
+            "default": "gateway-session",
+            "title": "Credential Mode",
+            "type": "string"
+          },
+          "model_base_url": {
+            "title": "Model Base Url",
+            "type": "string"
+          },
+          "model_name": {
+            "const": "deepseek-flash",
+            "default": "deepseek-flash",
+            "title": "Model Name",
+            "type": "string"
+          },
+          "protocol": {
+            "const": "anthropic-messages",
+            "default": "anthropic-messages",
+            "title": "Protocol",
+            "type": "string"
+          },
+          "task_archive_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "title": "Task Archive Digest",
+            "type": "string"
+          },
+          "task_archive_key": {
+            "maxLength": 512,
+            "title": "Task Archive Key",
+            "type": "string"
+          },
+          "verifier_mode": {
+            "const": "separate",
+            "default": "separate",
+            "title": "Verifier Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_archive_key",
+          "task_archive_digest",
+          "model_base_url"
+        ],
+        "title": "RunnableBinding",
         "type": "object"
       },
       "TrialStatus": {

@@ -1,5 +1,6 @@
 """PostgreSQL 权威状态；每次执行权检查与写入均在同一事务内。"""
 
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from uuid import UUID, uuid4
 
@@ -70,7 +71,8 @@ class ExecutionService:
                 .returning(Job.id)
             )
             job = await session.get(Job, request.job_id)
-            if job.owner_id != request.owner_id or job.snapshot != payload:
+            saved = ExecutionSnapshot.model_validate(job.snapshot).model_dump(mode="json")
+            if job.owner_id != request.owner_id or saved != payload:
                 raise SubmissionConflict("Job identity already has different inputs")
             if created:
                 trial = Trial(
@@ -122,15 +124,16 @@ class ExecutionService:
             await session.scalar(select(Trial).where(Trial.job_id == job_id).with_for_update())
             return await self.view(session, job)
 
-    async def claim(self, worker_id: UUID, lease_seconds: int = 60) -> Lease | None:
+    async def claim(
+        self, worker_id: UUID, lease_seconds: int = 60, runnable_only: bool = False
+    ) -> Lease | None:
         duration = self.duration(lease_seconds)
         async with self.sessions.begin() as session:
+            query = select(Trial).where(Trial.status == TrialStatus.QUEUED)
+            if runnable_only:
+                query = query.join(Job).where(Job.snapshot["runtime"].as_string().is_not(None))
             trial = await session.scalar(
-                select(Trial)
-                .where(Trial.status == TrialStatus.QUEUED)
-                .order_by(Trial.id)
-                .with_for_update(skip_locked=True)
-                .limit(1)
+                query.order_by(Trial.id).with_for_update(of=Trial, skip_locked=True).limit(1)
             )
             if trial is None:
                 return None
@@ -150,6 +153,7 @@ class ExecutionService:
             )
             session.add(execution)
             return Lease(
+                job_id=job.id,
                 trial_id=trial.id,
                 execution_id=execution.id,
                 worker_id=worker_id,
@@ -186,6 +190,7 @@ class ExecutionService:
             execution.expires_at = now + duration
             job = await session.get(Job, trial.job_id)
             return Lease(
+                job_id=job.id,
                 **lease.model_dump(
                     include={"trial_id", "execution_id", "worker_id", "fencing_token"}
                 ),
@@ -193,7 +198,12 @@ class ExecutionService:
                 snapshot=ExecutionSnapshot.model_validate(job.snapshot),
             )
 
-    async def finish(self, lease: LeaseIdentity, result: ResultCommit) -> TrialView:
+    async def finish(
+        self,
+        lease: LeaseIdentity,
+        result: ResultCommit,
+        verifier: Callable[[Lease, ResultCommit], Awaitable[None]] | None = None,
+    ) -> TrialView:
         payload = result.model_dump(mode="json")
         async with self.sessions.begin() as session:
             trial, execution = await self.owned(session, lease)
@@ -207,6 +217,31 @@ class ExecutionService:
                     raise SubmissionConflict("Execution already has a different result")
                 # 同一次已接受提交在租约结束后仍可重放；必须是当前执行者。
             else:
+                if (
+                    trial.status != TrialStatus.RUNNING
+                    or execution.status != ExecutionStatus.RUNNING
+                    or execution.expires_at <= await self.now(session)
+                ):
+                    raise LeaseRejected("Lease is not active")
+                job = await session.get(Job, trial.job_id)
+                snapshot = ExecutionSnapshot.model_validate(job.snapshot)
+                if snapshot.runtime is not None:
+                    if verifier is None:
+                        raise SubmissionConflict("Runnable results require object verification")
+                    if execution.expires_at <= await self.now(session):
+                        raise LeaseRejected("Lease is not active")
+                    await verifier(
+                        Lease(
+                            job_id=job.id,
+                            trial_id=trial.id,
+                            execution_id=execution.id,
+                            worker_id=execution.worker_id,
+                            fencing_token=execution.fencing_token,
+                            expires_at=execution.expires_at,
+                            snapshot=snapshot,
+                        ),
+                        result,
+                    )
                 if (
                     trial.status != TrialStatus.RUNNING
                     or execution.status != ExecutionStatus.RUNNING

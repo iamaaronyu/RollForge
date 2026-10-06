@@ -3,7 +3,7 @@ name = "rollforge-worker"
 version = "0.1.0"
 description = "RollForge worker"
 requires-python = ">=3.11"
-dependencies = ["rollforge-schemas", "rollforge-common", "rollforge-harbor-adapter", "rollforge-hub-sdk"]
+dependencies = ["rollforge-schemas", "rollforge-common", "rollforge-harbor-adapter", "rollforge-hub-sdk", "rollforge-object-store", "python-dotenv>=1.2,<2"]
 
 [build-system]
 requires = ["hatchling"]
@@ -17,3 +17,4 @@ rollforge-schemas = { workspace = true }
 rollforge-common = { workspace = true }
 rollforge-harbor-adapter = { workspace = true }
 rollforge-hub-sdk = { workspace = true }
+rollforge-object-store = { workspace = true }

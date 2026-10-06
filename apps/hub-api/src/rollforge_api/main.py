@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from rollforge_common.settings import Settings
+from rollforge_object_store.s3 import ObjectStoreError
 from rollforge_schemas.api import ApiError, ErrorCode
 from rollforge_schemas.domain import HealthResponse
 from sqlalchemy import text
@@ -68,6 +69,10 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
     @app.exception_handler(TimeoutError)
     async def database_unavailable(_request, _exc):
         return error(503, ErrorCode.DATABASE_UNAVAILABLE, "数据库操作暂不可用")
+
+    @app.exception_handler(ObjectStoreError)
+    async def storage_unavailable(_request, _exc):
+        return error(503, ErrorCode.STORAGE_UNAVAILABLE, "对象存储或结果校验暂不可用")
 
     @app.get("/health/live", response_model=HealthResponse, tags=["health"])
     async def live():
