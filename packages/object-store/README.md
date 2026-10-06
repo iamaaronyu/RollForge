@@ -13,7 +13,7 @@
 
 `scope` 是 ExecutionScope，包含 job_id、trial_id、execution_id、fencing_token。相同 Execution 的输出变更会被拒绝；Retry 必须使用新 Execution。对象键为 `jobs/{job_id}/trials/{trial_id}/executions/{execution_id}/files/{relative_path}`，Manifest 位于同一前缀下的 manifest.json。
 
-同步方法会访问网络；异步 Worker/API 应使用 asyncio.to_thread 并保持租约续租。API 应先通过 verify 验证远端内容，再在 PostgreSQL 事务中校验当前租约与 fencing、完成提交；不能以存储对象存在代替有效执行权。
+同步方法会访问网络；异步 Worker/API 应使用 asyncio.to_thread 并保持租约续租。API 在 PostgreSQL 租约事务内核对当前所有者与 fencing，再通过 verify 验证远端内容，提交前重新检查数据库时钟与租约有效性；不能以存储对象存在代替有效执行权。已接受的完全相同提交由数据库幂等返回，无需再次读取存储。
 
 底层采用 [官方 S3 PutObject 的 IfNoneMatch 条件](https://docs.aws.amazon.com/boto3/latest/reference/services/s3/client/put_object.html)：仅写入不存在的对象。已有对象须完整读回、内容相同才允许重放；409 并发冲突返回安全的可重试错误，不降级为无条件覆盖。SHA256 来自实际内容，不信任 HEAD 或调用方写入的摘要元数据。
 
