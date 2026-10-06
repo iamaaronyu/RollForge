@@ -1,6 +1,6 @@
 # 单 Trial Worker
 
-Worker 已实现一次领取、续租、独立 Runtime 子进程、原始产物上传和提交恢复。默认关闭；仅面向已审核 Task、已批准的受限模型网关和单并发实验环境。真实 Worker → Harbor → E2B → 模型 → 对象存储 → Hub 全链验收尚未完成，`platform.execution_enabled` 保持 false。本实现不提供通用 Task Registry、用户登录、多租户 Worker 分配或持续调度。
+Worker 已实现一次领取、续租、独立 Runtime 子进程、原始产物上传和提交恢复。默认关闭；仅面向已审核 Task、已批准的受限模型网关和单并发实验环境。真实 Worker → Harbor → E2B → 模型 → 对象存储 → Hub 全链已在受限 LAN、并发 1 的合成样例范围通过。实验网关尚无 TLS 与持久化预算，`platform.execution_enabled` 仍保持 false。本实现不提供通用 Task Registry、用户登录、多租户 Worker 分配或持续调度。
 
 ## 配置与凭证
 
@@ -23,7 +23,7 @@ Worker 已实现一次领取、续租、独立 Runtime 子进程、原始产物�
 
 Runtime 会话文件必须是普通文件，权限 0600、直接父目录 0700；包含 `ROLLFORGE_MODEL_SESSION_TOKEN` 和 `E2B_API_KEY`，以及自托管 `E2B_API_URL` / `E2B_SANDBOX_URL` 或 `E2B_DOMAIN`。会话须由已批准的网关分配并限制预算、期限和权限。Worker 不自动创建会话，不接受上游 `ANTHROPIC_API_KEY` 代替受限会话，不展开文件中的环境变量引用。
 
-子进程只接收受限会话、E2B 配置、PATH、独立 HOME、LANG 和固定输出限制；Hub/S3 凭证不传入。网关默认要求 HTTPS，URL 不能含凭证、路径或查询参数。原始结果在任何上传前扫描已知平台/会话凭证，发现泄露则停止上传；该扫描不能保证识别任务自行获得的所有未知秘密。
+子进程只接收受限会话、E2B 配置、PATH、独立 HOME、LANG、固定输出限制和固定代理隔离配置；Hub/S3 凭证不传入。配置的 Runtime Python 使用绝对路径并保留 venv 符号链接，不能 resolve 到基础解释器；显式清空代理变量，NO_PROXY 列出可信端点而非通配符，避免固定 SDK 采用宿主代理。网关默认要求 HTTPS，URL 不能含凭证、路径或查询参数。原始结果在任何上传前扫描已知平台/会话凭证，发现泄露则停止上传；该扫描不能保证识别任务自行获得的所有未知秘密。
 
 ## 冻结任务与运行绑定
 

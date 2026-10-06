@@ -59,6 +59,26 @@ def runtime_environment(settings: WorkerSettings, directory: Path):
         "ANTHROPIC_API_KEY": token,
         "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "8192",
     }
+    # 固定 SDK 的底层会读取 macOS 系统代理；显式列出可信端点，避免凭证绕行代理。
+    # 实测通配符 '*' 不能替代该版本的主机列表。
+    hosts = {"localhost", "127.0.0.1", "::1"}
+    for endpoint in (
+        settings.worker_gateway_url,
+        values.get("E2B_API_URL"),
+        values.get("E2B_SANDBOX_URL"),
+    ):
+        if endpoint and urlsplit(endpoint).hostname:
+            hosts.add(urlsplit(endpoint).hostname)
+    env["NO_PROXY"] = env["no_proxy"] = ",".join(sorted(hosts))
+    for name in (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+    ):
+        env[name] = ""
     for name in ("E2B_API_KEY", "E2B_API_URL", "E2B_SANDBOX_URL", "E2B_DOMAIN"):
         if values.get(name):
             env[name] = values[name]
@@ -145,7 +165,8 @@ class Worker:
         )
         atomic_write(directory / "runtime-spec.json", spec.model_dump_json())
         process = await asyncio.create_subprocess_exec(
-            str(self.settings.worker_runtime_python.resolve()),
+            # 保留 venv 的 python 符号链接；resolve 会跳到基础解释器并丢失隔离依赖。
+            str(self.settings.worker_runtime_python.absolute()),
             "-m",
             "rollforge_harbor_adapter.worker_runtime",
             "--spec",

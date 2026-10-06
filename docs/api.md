@@ -13,7 +13,7 @@
 | `POST /api/v1/worker/leases/renew` | WORKER 续租；校验身份、执行 ID、token 和有效期 |
 | `POST /api/v1/worker/leases/finish` | WORKER 提交结果元数据；同一结果可幂等重放 |
 
-业务接口已实现，控制面写接口默认关闭。ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED 默认为 false；关闭时创建、领取、续租、完成返回 503 / WRITES_DISABLED。GET 查询仍需认证。Worker 执行与恢复实现见 [Worker 说明](worker.md)，真实全链验收尚未完成，platform 的 execution_enabled 保持 false，control_plane_writes_enabled 单独报告元数据写开关，不表示完成 S0 或开放真实执行。
+业务接口已实现，控制面写接口默认关闭。ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED 默认为 false；关闭时创建、领取、续租、完成返回 503 / WRITES_DISABLED。GET 查询仍需认证。Worker 执行与恢复实现见 [Worker 说明](worker.md)，受限 LAN、并发 1 的合成样例真实全链已通过，实验网关的 TLS、持久化预算等生产条件尚未完成，platform 的 execution_enabled 保持 false，control_plane_writes_enabled 单独报告元数据写开关，不表示完成 S0 或开放真实执行。
 
 ## 认证与权限
 

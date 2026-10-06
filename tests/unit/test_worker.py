@@ -84,6 +84,10 @@ def test_runtime_credentials_are_allowlisted_without_environment_expansion(tmp_p
     assert "platform-secret" not in env.values()
     assert "upstream-secret" not in env.values()
     assert not any("HUB" in name or "STORAGE" in name for name in env)
+    assert {"localhost", "127.0.0.1", "::1"} <= set(env["NO_PROXY"].split(","))
+    assert env["no_proxy"] == env["NO_PROXY"]
+    assert "*" not in env["NO_PROXY"]
+    assert all(env[name] == "" for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"))
     path.write_text(
         "ROLLFORGE_MODEL_SESSION_TOKEN=${ROLLFORGE_OBJECT_STORAGE_SECRET_KEY}\nE2B_API_KEY=test\n"
     )
@@ -253,3 +257,73 @@ async def test_pending_submission_replay_never_reruns_runtime(tmp_path):
     with pytest.raises(WorkerError):
         await worker.resume(tmp_path)
     assert hub.calls == 2
+
+
+async def test_real_subprocess_preserves_selected_venv_and_credential_boundary(tmp_path):
+    """真实 OS 子进程的离线启动回归；替身 Runtime 不计为 Harbor 验收。"""
+    import json
+    import sys
+    import venv
+
+    environment = tmp_path / "isolated-runtime"
+    venv.EnvBuilder(with_pip=False).create(environment)
+    packages = (
+        environment
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages"
+    )
+    adapter = packages / "rollforge_harbor_adapter"
+    adapter.mkdir()
+    (adapter / "__init__.py").write_text("")
+    (adapter / "worker_runtime.py").write_text(
+        "import argparse,json,os,sys\nfrom pathlib import Path\n"
+        "parser=argparse.ArgumentParser();parser.add_argument('--spec');parser.add_argument('--run',action='store_true')\n"
+        "args=parser.parse_args();spec=json.loads(Path(args.spec).read_text());root=Path(spec['output_dir']).parent\n"
+        "proof={'venv_active':sys.prefix!=sys.base_prefix,"
+        "'session_present':bool(os.getenv('ANTHROPIC_API_KEY')),"
+        "'platform_credentials_absent':"
+        "not any('HUB' in k or 'STORAGE' in k for k in os.environ)}\n"
+        "(root/'proof.json').write_text(json.dumps(proof));(root/'native-ready.json').write_text('{}')\n"
+    )
+    task = tmp_path / "source"
+    task.mkdir()
+    (task / "instruction.md").write_text("offline subprocess boundary check")
+    archive, identity = pack_task(task)
+    lease = runnable_lease()
+    binding = lease.snapshot.runtime.model_copy(
+        update={"task_archive_digest": digest_bytes(archive)}
+    )
+    lease = lease.model_copy(
+        update={
+            "snapshot": lease.snapshot.model_copy(
+                update={
+                    "task": lease.snapshot.task.model_copy(update={"digest": identity}),
+                    "runtime": binding,
+                }
+            )
+        }
+    )
+
+    class ArchiveStore:
+        def read(self, _key):
+            return archive
+
+    class BoundaryWorker(Worker):
+        async def publish(self, _lease, directory, _env):
+            return json.loads((directory / "proof.json").read_text())
+
+    settings = WorkerSettings(
+        _env_file=None,
+        worker_runtime_python=environment / "bin/python",
+        worker_runtime_env_file=session_file(tmp_path),
+        worker_gateway_url="https://gateway.test",
+    )
+    directory = tmp_path / "execution"
+    directory.mkdir(mode=0o700)
+    proof = await BoundaryWorker(settings, None, ArchiveStore()).execute(lease, directory)
+    assert proof == {
+        "venv_active": True,
+        "session_present": True,
+        "platform_credentials_absent": True,
+    }
