@@ -38,6 +38,32 @@ def build_trial_config(spec: RuntimeSpec, trial_name: str):
     )
 
 
+async def await_native_trial(trial):
+    """Forward cancellation once, then let Harbor finish its owned cleanup.
+
+    Repeated caller cancellation must not interrupt output recovery or abandon
+    Harbor's shielded sandbox deletion when the event loop shuts down.
+    """
+    running = asyncio.create_task(trial.run())
+    try:
+        return await asyncio.shield(running)
+    except asyncio.CancelledError:
+        running.cancel()
+        while not running.done():
+            try:
+                await asyncio.shield(running)
+            except asyncio.CancelledError:
+                continue
+            except Exception as error:
+                raise asyncio.CancelledError from error
+        if not running.cancelled():
+            # Retrieve a cleanup error rather than leaving an unobserved task.
+            error = running.exception()
+            if error is not None:
+                raise asyncio.CancelledError from error
+        raise
+
+
 async def run_native_trial(spec: RuntimeSpec) -> Path:
     """Harbor owns cleanup in Trial.run's finally path, including cancellation.
 
@@ -51,5 +77,5 @@ async def run_native_trial(spec: RuntimeSpec) -> Path:
     trial = await Trial.create(config)
     # Include time for provisioning, agent setup, verification and cleanup.
     async with asyncio.timeout(spec.timeout_sec * 4):
-        await trial.run()
+        await await_native_trial(trial)
     return spec.output_dir.resolve() / name

@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from dotenv import load_dotenv
 from rollforge_harbor_adapter.manifest import content_manifest
-from rollforge_harbor_adapter.native import build_trial_config
+from rollforge_harbor_adapter.native import await_native_trial, build_trial_config
 from rollforge_harbor_adapter.preflight import preflight, runtime_versions, spec_from_env
 from rollforge_harbor_adapter.results import summarize_result
 
@@ -22,6 +22,7 @@ CASES = (
     "agent_timeout",
     "agent_error",
     "cancel",
+    "repeat_cancel",
 )
 
 
@@ -44,6 +45,7 @@ def prepare_task(root: Path, case: str) -> Path:
         "verifier_error": "exit 42\n",
         "verifier_timeout": "sleep 120\n",
         "cancel": "sleep 120\n",
+        "repeat_cancel": "sleep 120\n",
     }.get(case)
     if verifier is not None:
         (task / "tests/test.sh").write_text("#!/bin/sh\nset -eu\n" + verifier)
@@ -67,6 +69,9 @@ async def run_case(root: Path, case: str) -> dict:
         config.verifier.override_timeout_sec = 1
     trial = await Trial.create(config)
     started = asyncio.Event()
+    recovering = asyncio.Event()
+    cancel_events = 0
+    cancel_requests = 0
 
     async def verification_started(_event):
         started.set()
@@ -79,20 +84,36 @@ async def run_case(root: Path, case: str) -> dict:
             "chmod +x /usr/local/bin/claude"
         )
 
-    if case == "cancel":
+    async def cancellation_started(_event):
+        nonlocal cancel_events
+        cancel_events += 1
+        recovering.set()
+        if case == "repeat_cancel":
+            await asyncio.sleep(0.2)
+
+    trial.add_hook(TrialEvent.CANCEL, cancellation_started)
+    if case in {"cancel", "repeat_cancel"}:
         trial.add_hook(TrialEvent.VERIFICATION_START, verification_started)
     if case == "agent_error":
         trial.add_hook(TrialEvent.AGENT_START, break_agent)
-    running = asyncio.create_task(trial.run())
+    running = asyncio.create_task(await_native_trial(trial))
     cancelled = False
     try:
         async with asyncio.timeout(900):
-            if case == "cancel":
+            if case in {"cancel", "repeat_cancel"}:
 
                 async def cancel_during_verifier():
+                    nonlocal cancel_requests
                     await started.wait()
                     await asyncio.sleep(0.5)
                     running.cancel()
+                    cancel_requests += 1
+                    if case == "repeat_cancel":
+                        await recovering.wait()
+                        for _ in range(2):
+                            await asyncio.sleep(0.01)
+                            running.cancel()
+                            cancel_requests += 1
 
                 trigger = asyncio.create_task(cancel_during_verifier())
                 try:
@@ -103,7 +124,7 @@ async def run_case(root: Path, case: str) -> dict:
             else:
                 await running
     except asyncio.CancelledError:
-        if case != "cancel":
+        if case not in {"cancel", "repeat_cancel"}:
             raise
         cancelled = True
     directory = config.trials_dir / config.trial_name
@@ -116,13 +137,15 @@ async def run_case(root: Path, case: str) -> dict:
         "agent_timeout": "AgentTimeoutError",
         "agent_error": "NonZeroAgentExitCodeError",
         "cancel": "CancelledError",
+        "repeat_cancel": "CancelledError",
     }[case]
     remaining = await sandbox_count()
     passed = (
         summary.exception_type == expected
         and summary.outcome == ("SCORED" if case == "zero_score" else "RUNTIME_FAILED")
         and (case != "zero_score" or summary.rewards == {"reward": 0.0})
-        and (case != "cancel" or cancelled)
+        and (case not in {"cancel", "repeat_cancel"} or cancelled)
+        and (case != "repeat_cancel" or (cancel_requests == 3 and cancel_events == 1))
         and remaining == 0
         and content_manifest(task).digest == digest
     )
@@ -132,6 +155,8 @@ async def run_case(root: Path, case: str) -> dict:
         "task_digest": digest,
         "summary": summary.model_dump(mode="json"),
         "cancel_propagated": cancelled,
+        "cancel_requests": cancel_requests,
+        "native_cancel_events": cancel_events,
         "sandboxes_remaining": remaining,
         "output_manifest": content_manifest(directory).model_dump(mode="json"),
     }
@@ -167,7 +192,7 @@ def main() -> int:
     parser.add_argument("--env-file", type=Path, default=ROOT / ".env.spike")
     args = parser.parse_args()
     if not args.run:
-        print("请显式传入 --run，在独占的真实 E2B 测试环境执行六个故障场景。")
+        print("请显式传入 --run，在独占的真实 E2B 测试环境执行七个故障场景。")
         return 0
     load_dotenv(args.env_file, override=False)
     spec = spec_from_env(os.environ, ROOT / "examples/tasks/hello-task", ROOT / "outputs/spike")
