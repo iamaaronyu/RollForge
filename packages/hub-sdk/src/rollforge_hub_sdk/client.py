@@ -14,6 +14,7 @@ from rollforge_schemas.api import (
 )
 from rollforge_schemas.domain import HealthResponse
 from rollforge_schemas.execution import ExecutionList, JobList, JobView, Lease, TrialView
+from rollforge_schemas.registry import AssetRevision, RevisionCreate, RevisionList
 
 Model = TypeVar("Model", bound=BaseModel)
 
@@ -112,6 +113,30 @@ class HubClient:
                 "GET", f"/api/v1/jobs/{job_id}/executions", params={"limit": limit, "after": after}
             ),
             ExecutionList,
+        )
+
+    async def create_revision(self, body: RevisionCreate) -> AssetRevision:
+        response = await self._request(
+            "POST", "/api/v1/registry/revisions", body.model_dump(mode="json")
+        )
+        return self._decode(response, AssetRevision)
+
+    async def get_revision(self, asset_id: UUID, revision: int) -> AssetRevision:
+        return self._decode(
+            await self._request("GET", f"/api/v1/registry/assets/{asset_id}/revisions/{revision}"),
+            AssetRevision,
+        )
+
+    async def list_revisions(
+        self, asset_id: UUID, *, limit: int = 20, after: int = 0
+    ) -> RevisionList:
+        return self._decode(
+            await self._request(
+                "GET",
+                f"/api/v1/registry/assets/{asset_id}/revisions",
+                params={"limit": limit, "after": after},
+            ),
+            RevisionList,
         )
 
     async def claim(self, body: ClaimRequest | None = None) -> Lease | None:

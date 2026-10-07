@@ -3,7 +3,16 @@ from uuid import UUID
 
 from rollforge_schemas.domain import TrialStatus
 from rollforge_schemas.execution import ExecutionStatus
-from sqlalchemy import JSON, CheckConstraint, DateTime, Enum, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -52,3 +61,24 @@ class Execution(Base):
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     result: Mapped[dict | None] = mapped_column(document, nullable=True)
+
+
+class RegistryAsset(Base):
+    __tablename__ = "registry_assets"
+    __table_args__ = (
+        CheckConstraint("kind IN ('TASK', 'AGENT', 'MODEL')", name="ck_registry_kind"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID] = mapped_column(index=True)
+    kind: Mapped[str] = mapped_column(String(8))
+
+
+class RegistryRevision(Base):
+    __tablename__ = "registry_revisions"
+    __table_args__ = (
+        CheckConstraint("revision >= 1 AND revision <= 1000000", name="ck_registry_revision"),
+    )
+    asset_id: Mapped[UUID] = mapped_column(ForeignKey("registry_assets.id"), primary_key=True)
+    revision: Mapped[int] = mapped_column(primary_key=True)
+    digest: Mapped[str] = mapped_column(String(71))
+    spec: Mapped[dict] = mapped_column(document)

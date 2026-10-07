@@ -1,6 +1,31 @@
 {
   "components": {
     "schemas": {
+      "AgentSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_name": {
+            "const": "claude-code",
+            "default": "claude-code",
+            "title": "Agent Name",
+            "type": "string"
+          },
+          "agent_version": {
+            "const": "2.1.81",
+            "default": "2.1.81",
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "kind": {
+            "const": "AGENT",
+            "default": "AGENT",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "title": "AgentSpec",
+        "type": "object"
+      },
       "ApiError": {
         "additionalProperties": false,
         "properties": {
@@ -98,6 +123,57 @@
           "result"
         ],
         "title": "ArtifactIndex",
+        "type": "object"
+      },
+      "AssetRevision": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "title": "Digest",
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "spec": {
+            "discriminator": {
+              "mapping": {
+                "AGENT": "#/components/schemas/AgentSpec",
+                "MODEL": "#/components/schemas/ModelSpec",
+                "TASK": "#/components/schemas/TaskSpec"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskSpec"
+              },
+              {
+                "$ref": "#/components/schemas/AgentSpec"
+              },
+              {
+                "$ref": "#/components/schemas/ModelSpec"
+              }
+            ],
+            "title": "Spec"
+          }
+        },
+        "required": [
+          "asset_id",
+          "revision",
+          "spec",
+          "digest"
+        ],
+        "title": "AssetRevision",
         "type": "object"
       },
       "ClaimRequest": {
@@ -486,6 +562,44 @@
         "title": "LeaseReference",
         "type": "object"
       },
+      "ModelSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "credential_mode": {
+            "const": "gateway-session",
+            "default": "gateway-session",
+            "title": "Credential Mode",
+            "type": "string"
+          },
+          "kind": {
+            "const": "MODEL",
+            "default": "MODEL",
+            "title": "Kind",
+            "type": "string"
+          },
+          "model_base_url": {
+            "title": "Model Base Url",
+            "type": "string"
+          },
+          "model_name": {
+            "const": "deepseek-flash",
+            "default": "deepseek-flash",
+            "title": "Model Name",
+            "type": "string"
+          },
+          "protocol": {
+            "const": "anthropic-messages",
+            "default": "anthropic-messages",
+            "title": "Protocol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_base_url"
+        ],
+        "title": "ModelSpec",
+        "type": "object"
+      },
       "RenewRequest": {
         "additionalProperties": false,
         "properties": {
@@ -564,6 +678,79 @@
         ],
         "title": "ResultOutcome",
         "type": "string"
+      },
+      "RevisionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "spec": {
+            "discriminator": {
+              "mapping": {
+                "AGENT": "#/components/schemas/AgentSpec",
+                "MODEL": "#/components/schemas/ModelSpec",
+                "TASK": "#/components/schemas/TaskSpec"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskSpec"
+              },
+              {
+                "$ref": "#/components/schemas/AgentSpec"
+              },
+              {
+                "$ref": "#/components/schemas/ModelSpec"
+              }
+            ],
+            "title": "Spec"
+          }
+        },
+        "required": [
+          "asset_id",
+          "revision",
+          "spec"
+        ],
+        "title": "RevisionCreate",
+        "type": "object"
+      },
+      "RevisionList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AssetRevision"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "RevisionList",
+        "type": "object"
       },
       "RevisionRef": {
         "additionalProperties": false,
@@ -681,6 +868,33 @@
           "digest"
         ],
         "title": "StoredFile",
+        "type": "object"
+      },
+      "TaskSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "archive_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "title": "Archive Digest",
+            "type": "string"
+          },
+          "archive_key": {
+            "maxLength": 512,
+            "title": "Archive Key",
+            "type": "string"
+          },
+          "kind": {
+            "const": "TASK",
+            "default": "TASK",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "archive_key",
+          "archive_digest"
+        ],
+        "title": "TaskSpec",
         "type": "object"
       },
       "TimelineStep": {
@@ -1861,6 +2075,333 @@
         "summary": "Platform",
         "tags": [
           "platform"
+        ]
+      }
+    },
+    "/api/v1/registry/assets/{asset_id}/revisions": {
+      "get": {
+        "operationId": "list_revisions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Revisions",
+        "tags": [
+          "registry"
+        ]
+      }
+    },
+    "/api/v1/registry/assets/{asset_id}/revisions/{revision}": {
+      "get": {
+        "operationId": "get_revision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "maximum": 1000000,
+              "minimum": 1,
+              "title": "Revision",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetRevision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Revision",
+        "tags": [
+          "registry"
+        ]
+      }
+    },
+    "/api/v1/registry/revisions": {
+      "post": {
+        "operationId": "create_revision",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevisionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetRevision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Revision",
+        "tags": [
+          "registry"
         ]
       }
     },

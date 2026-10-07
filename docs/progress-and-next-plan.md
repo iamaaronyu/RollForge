@@ -93,3 +93,6 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 本批页面及查询验收见 [页面记录](validation/2026-10-06-s1-web.md)；后续按 [逐步实施计划](next-implementation.md) 推进。
 
 第二批已实现受控产物索引及 1 MiB 文本预览，真实 PostgreSQL/MinIO 权限、越界、篡改与预览边界通过；详见 [基础 Viewer 验收](validation/2026-10-06-viewer.md)。第三批主轨迹版本化投影与中文时间线已实现，159 项全量测试通过；详见 [时间线验收](validation/2026-10-06-trajectory.md)。多模态/子轨迹展开、搜索与聚合仍待开发。
+
+
+2026-10-07 第四批：三类不可变资产版本注册表、迁移、USER API 与 SDK 已实现；注册表尚未接入执行快照或批量展开，不改变单 Trial 主链。数据库竞争、冻结、权限及带数据迁移回退通过，详见 [Registry 说明](registry.md) 和 [验收记录](validation/2026-10-07-registry.md)。下一切片为多 Trial Job 契约、迁移与确定性展开。

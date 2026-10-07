@@ -141,6 +141,57 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/registry/assets/{asset_id}/revisions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Revisions */
+        readonly get: operations["list_revisions"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/registry/assets/{asset_id}/revisions/{revision}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Revision */
+        readonly get: operations["get_revision"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/registry/revisions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Create Revision */
+        readonly post: operations["create_revision"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/tasks/approved": {
         readonly parameters: {
             readonly query?: never;
@@ -247,6 +298,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AgentSpec */
+        readonly AgentSpec: {
+            /**
+             * Agent Name
+             * @default claude-code
+             * @constant
+             */
+            readonly agent_name: "claude-code";
+            /**
+             * Agent Version
+             * @default 2.1.81
+             * @constant
+             */
+            readonly agent_version: "2.1.81";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly kind: "AGENT";
+        };
         /** ApiError */
         readonly ApiError: {
             readonly code: components["schemas"]["ErrorCode"];
@@ -280,6 +351,20 @@ export interface components {
             /** Files */
             readonly files: readonly components["schemas"]["StoredFile"][];
             readonly result: components["schemas"]["ResultCommit"];
+        };
+        /** AssetRevision */
+        readonly AssetRevision: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            readonly asset_id: string;
+            /** Digest */
+            readonly digest: string;
+            /** Revision */
+            readonly revision: number;
+            /** Spec */
+            readonly spec: components["schemas"]["TaskSpec"] | components["schemas"]["AgentSpec"] | components["schemas"]["ModelSpec"];
         };
         /** ClaimRequest */
         readonly ClaimRequest: {
@@ -456,6 +541,34 @@ export interface components {
              */
             readonly trial_id: string;
         };
+        /** ModelSpec */
+        readonly ModelSpec: {
+            /**
+             * Credential Mode
+             * @default gateway-session
+             * @constant
+             */
+            readonly credential_mode: "gateway-session";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly kind: "MODEL";
+            /** Model Base Url */
+            readonly model_base_url: string;
+            /**
+             * Model Name
+             * @default deepseek-flash
+             * @constant
+             */
+            readonly model_name: "deepseek-flash";
+            /**
+             * Protocol
+             * @default anthropic-messages
+             * @constant
+             */
+            readonly protocol: "anthropic-messages";
+        };
         /** RenewRequest */
         readonly RenewRequest: {
             readonly lease: components["schemas"]["LeaseReference"];
@@ -483,6 +596,25 @@ export interface components {
          * @enum {string}
          */
         readonly ResultOutcome: "SCORED" | "RUNTIME_FAILED" | "UNVERIFIED";
+        /** RevisionCreate */
+        readonly RevisionCreate: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            readonly asset_id: string;
+            /** Revision */
+            readonly revision: number;
+            /** Spec */
+            readonly spec: components["schemas"]["TaskSpec"] | components["schemas"]["AgentSpec"] | components["schemas"]["ModelSpec"];
+        };
+        /** RevisionList */
+        readonly RevisionList: {
+            /** Items */
+            readonly items: readonly components["schemas"]["AssetRevision"][];
+            /** Next Cursor */
+            readonly next_cursor?: number | null;
+        };
         /** RevisionRef */
         readonly RevisionRef: {
             /** Digest */
@@ -548,6 +680,18 @@ export interface components {
             readonly path: string;
             /** Size */
             readonly size: number;
+        };
+        /** TaskSpec */
+        readonly TaskSpec: {
+            /** Archive Digest */
+            readonly archive_digest: string;
+            /** Archive Key */
+            readonly archive_key: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly kind: "TASK";
         };
         /** TimelineStep */
         readonly TimelineStep: {
@@ -1299,6 +1443,240 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": unknown;
+                };
+            };
+        };
+    };
+    readonly list_revisions: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+                readonly after?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly asset_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RevisionList"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    readonly get_revision: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly asset_id: string;
+                readonly revision: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AssetRevision"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    readonly create_revision: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RevisionCreate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AssetRevision"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
                 };
             };
         };

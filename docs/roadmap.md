@@ -7,6 +7,6 @@
 5. **S4**：取消与清理、故障测试、监控、部署与运行手册，完成 MVP 验收。
 6. 后续：企业治理、实验比较、数据挖掘和训练导出。
 
-2026-10-06：S0 在可信 LAN、并发 1 范围完成；S1 单 Trial Worker 主链、存储/提交恢复及最小中文任务页面已有验收证据。S2 的 Manifest、原始输出与上传恢复已提前实现；基础 Viewer/主轨迹时间线已实现；Registry、持续调度及高级 Viewer 仍待完成；页面实施进度见 [后续实施计划](next-implementation.md)。正式入口保持关闭。当前进展及细化顺序见 [开发进展与后续计划](progress-and-next-plan.md)。
+2026-10-06：S0 在可信 LAN、并发 1 范围完成；S1 单 Trial Worker 主链、存储/提交恢复及最小中文任务页面已有验收证据。S2 的 Manifest、原始输出与上传恢复已提前实现；基础 Viewer/主轨迹时间线已实现；三类 Registry 基础已实现；批量展开、持续调度及高级 Viewer 仍待完成；页面实施进度见 [后续实施计划](next-implementation.md)。正式入口保持关闭。当前进展及细化顺序见 [开发进展与后续计划](progress-and-next-plan.md)。
 
 完整流程见 implementation-plan.md，运行命令见 spike.md，本地部署要求见 local-testing.md。高级 Pause/Resume/Fork 和 RL 继续后移。
