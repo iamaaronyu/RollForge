@@ -1,0 +1,28 @@
+[Unit]
+Description=RollForge Hub API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rollforge
+Group=rollforge
+WorkingDirectory=/opt/rollforge
+EnvironmentFile=/etc/rollforge/hub.env
+ExecStart=/opt/rollforge/.venv/bin/uvicorn rollforge_api.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

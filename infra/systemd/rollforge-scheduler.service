@@ -1,0 +1,30 @@
+[Unit]
+Description=RollForge Worker Scheduler
+After=network-online.target rollforge-hub.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rollforge
+Group=rollforge
+WorkingDirectory=/opt/rollforge
+EnvironmentFile=/etc/rollforge/worker.env
+ExecStart=/opt/rollforge/.venv/bin/python -m rollforge_scheduler --run
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=330
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/rollforge
+
+[Install]
+WantedBy=multi-user.target
