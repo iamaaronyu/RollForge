@@ -210,7 +210,8 @@ async def test_recovery_budget_and_service_restart(engine):
 async def test_active_renewal_and_failed_submission(engine):
     service = ExecutionService(engine)
     job = await service.create_job(request())
-    lease = await service.claim(uuid4(), lease_seconds=1)
+    # Keep enough headroom for remote PostgreSQL test hosts; lease expiry has a dedicated test.
+    lease = await service.claim(uuid4(), lease_seconds=30)
     renewed = await service.renew(lease, lease_seconds=60)
     assert renewed.expires_at > lease.expires_at
     assert await service.recover_expired() == 0

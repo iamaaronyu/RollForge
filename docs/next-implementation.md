@@ -11,7 +11,7 @@
 | 4 | 不可变 Revision Registry 与批量展开 | 版本冻结、幂等展开、Retry 不增加样本数 | API、SDK、资产发现分页及中文 Registry 页已实现；最新版本可选创建审核范围内 Job；真实 PostgreSQL 所有权/摘要/拒绝与分页测试通过。真实多 Trial Harbor/E2B/模型验收待完成，见 [绑定验收](validation/2026-10-26-registry-binding.md) 与 [页面验收](validation/2026-10-26-registry-ui.md) |
 | 5 | 持续 Worker 与容量调度 | 真双 Worker、背压、重启恢复、有界回收 | 有界常驻 Worker、FIFO 入队、退避、优雅停机与鉴权租约回收已实现；18 项真实 PostgreSQL 执行/API 测试通过；双 Worker Harbor/E2B、进程重启和全局容量验收待完成，见 [验收记录](validation/2026-10-26-scheduler.md) |
 | 6 | 部署与故障演练 | SIGKILL/掉电、限流、备份读回、监控与升级恢复 | 待开发 |
-| 并行前置 | 网关与权限加固 | TLS、持久化原子预算、登录、Worker/对象权限 | 正式开放前完成 |
+| 并行前置 | 网关与权限加固 | TLS/部署认证、token 级费用预算、用户登录、Worker/对象权限 | 请求次数已由 SQLite 持久化原子扣减；其余正式开放前完成 |
 
 每一切片先共享契约与权限，再实现 API/生成类型/页面；相关不变量用真实 PostgreSQL/MinIO 验证。修改执行链时补真实 Harbor/E2B/模型证据。提交前 make check；Runtime 改动追加 runtime-check。按文件独立提交，不混入其他 Agent 的改动。
 

@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import sqlite3
 import stat
 import threading
 import time
@@ -19,26 +20,55 @@ MAX_BODY = 2 * 1024 * 1024
 class Sessions:
     def __init__(self, config: Path):
         self.config = config
+        self.state_db = config.with_suffix(".sqlite3")
         self.lock = threading.Lock()
-        self.used: dict[str, int] = {}
+
+    def _initialize_budget_store(self):
+        info = self.config.parent.stat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o077:
+            raise ValueError("网关配置目录必须为仅 owner 可访问的目录")
+        descriptor = os.open(
+            self.state_db, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600
+        )
+        os.fchmod(descriptor, 0o600)
+        os.close(descriptor)
+        with sqlite3.connect(self.state_db, timeout=30) as connection:
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS session_usage ("
+                "token_sha256 TEXT PRIMARY KEY, "
+                "used_requests INTEGER NOT NULL CHECK (used_requests >= 0))"
+            )
+        self.state_db.chmod(0o600)
 
     def authorize(self, token: str, model: str) -> str | None:
-        # 重新读取配置，使删除或修改会话立即撤销；仅返回上游 Key 给宿主 HTTP 层。
+        # 会话按 token 摘要索引；额度在 SQLite 事务中原子扣减并跨进程/重启持久化。
+        # 重新读取配置使删除或修改会话立即撤销；仅返回上游 Key 给宿主 HTTP 层。
         with self.lock:
             info = self.config.lstat()
             if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
                 raise ValueError("网关配置必须为仅 owner 可读写的普通文件")
             data = json.loads(self.config.read_text())
-            session = data.get("sessions", {}).get(token)
+            identity = hashlib.sha256(token.encode()).hexdigest()
+            session = data.get("sessions", {}).get(identity)
             if not token or not session:
                 return None
             if time.time() >= session["expires_at"] or model != session["model"]:
                 return None
-            identity = hashlib.sha256(token.encode()).hexdigest()
-            used = self.used.get(identity, 0)
-            if used >= session["max_requests"]:
-                return None
-            self.used[identity] = used + 1
+            self._initialize_budget_store()
+            with sqlite3.connect(self.state_db, timeout=30) as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                row = connection.execute(
+                    "SELECT used_requests FROM session_usage WHERE token_sha256 = ?", (identity,)
+                ).fetchone()
+                used = row[0] if row is not None else 0
+                if used >= session["max_requests"]:
+                    return None
+                connection.execute(
+                    "INSERT INTO session_usage(token_sha256, used_requests) VALUES (?, 1) "
+                    "ON CONFLICT(token_sha256) DO UPDATE "
+                    "SET used_requests = excluded.used_requests + ?",
+                    (identity, used),
+                )
             return data["upstream_key"]
 
 

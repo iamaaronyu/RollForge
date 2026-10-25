@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 import runpy
@@ -13,6 +14,7 @@ import pytest
 
 gateway = runpy.run_path(str(Path(__file__).resolve().parents[2] / "scripts/model_gateway.py"))
 Sessions = gateway["Sessions"]
+SESSION_HASH = hashlib.sha256(b"synthetic-session").hexdigest()
 
 
 @pytest.fixture
@@ -23,7 +25,7 @@ def config(tmp_path):
             {
                 "upstream_key": "synthetic-upstream-key",
                 "sessions": {
-                    "synthetic-session": {
+                    SESSION_HASH: {
                         "model": "deepseek-flash",
                         "expires_at": time.time() + 60,
                         "max_requests": 3,
@@ -45,18 +47,31 @@ def test_unknown_session_and_wrong_model_never_authorized(config):
 
 def test_expired_session_rejected(config):
     data = json.loads(config.read_text())
-    data["sessions"]["synthetic-session"]["expires_at"] = time.time() - 1
+    data["sessions"][SESSION_HASH]["expires_at"] = time.time() - 1
     config.write_text(json.dumps(data))
     assert Sessions(config).authorize("synthetic-session", "deepseek-flash") is None
 
 
 def test_request_budget_is_atomic_under_concurrency(config):
-    sessions = Sessions(config)
     with ThreadPoolExecutor(max_workers=10) as pool:
         results = list(
-            pool.map(lambda _: sessions.authorize("synthetic-session", "deepseek-flash"), range(20))
+            pool.map(
+                lambda _: Sessions(config).authorize("synthetic-session", "deepseek-flash"),
+                range(20),
+            )
         )
     assert sum(value is not None for value in results) == 3
+
+
+def test_request_budget_survives_gateway_restart_and_state_is_private(config):
+    for _ in range(2):
+        assert Sessions(config).authorize("synthetic-session", "deepseek-flash")
+    restarted = Sessions(config)
+    assert restarted.authorize("synthetic-session", "deepseek-flash")
+    assert restarted.authorize("synthetic-session", "deepseek-flash") is None
+    state_db = config.with_suffix(".sqlite3")
+    assert state_db.stat().st_mode & 0o777 == 0o600
+    assert "synthetic-session" not in config.read_text()
 
 
 def test_revocation_is_seen_without_restart(config):

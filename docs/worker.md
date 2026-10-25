@@ -1,6 +1,6 @@
 # 单 Trial Worker
 
-Worker 支持单次领取，也可由持续调度进程以有限并发反复调用。默认关闭；仅面向已审核 Task、已批准的受限模型网关和受控实验环境。真实 Worker → Harbor → E2B → 模型 → 对象存储 → Hub 单 Trial 全链已在受限 LAN、并发 1 的合成样例范围通过。持续调度代码与真实 PostgreSQL FIFO/租约回收测试已实现；多 Worker 真实 E2B 竞争尚未验收。实验网关尚无 TLS 与持久化预算，`platform.execution_enabled` 仍保持 false。
+Worker 支持单次领取，也可由持续调度进程以有限并发反复调用。默认关闭；仅面向已审核 Task、已批准的受限模型网关和受控实验环境。真实 Worker → Harbor → E2B → 模型 → 对象存储 → Hub 单 Trial 全链已在受限 LAN、并发 1 的合成样例范围通过。持续调度代码与真实 PostgreSQL FIFO/租约回收测试已实现；多 Worker 真实 E2B 竞争尚未验收。实验网关现有跨进程/重启持久化的请求次数预算，但尚无 TLS、部署身份认证或 token 级费用预算；`platform.execution_enabled` 仍保持 false。
 
 ## 配置与凭证
 

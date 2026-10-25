@@ -12,4 +12,4 @@ Registry Job API 校验用户所有权、revision 摘要和部署者审核的精
 
 首个验证 Agent 为 Claude Code，模型选择 DeepSeek V4.1 Flash，使用官方 Anthropic 兼容 API。控制面与独立运行环境分别锁定依赖，不把 Harbor 和模型 SDK 全部引入 API 进程。
 
-S0 自托管部署与隔离、S1 单 Trial Worker 主链已有真实环境证据。实验网关缺少 TLS、持久化预算等生产条件，Hub 执行入口保持关闭；未知任务和多租户隔离尚未验收。
+S0 自托管部署与隔离、S1 单 Trial Worker 主链已有真实环境证据。实验网关已使用 SQLite 持久化原子请求次数，但仍缺 TLS、部署身份认证和 token 级费用预算；Hub 执行入口保持关闭，未知任务和多租户隔离尚未验收。

@@ -2,7 +2,7 @@
 
 开源 Agent Rollout 与评测平台。复用 Harbor 执行任务、E2B 提供 Sandbox，自研实验控制面与轨迹、产物、评分数据层。
 
-**当前状态：** S0 受限环境单 Trial 主链已验收；S1 Job/Trial/Execution、中文任务页、多 Trial 展开、单进程有界 FIFO 调度、Registry 资产版本网页和审核绑定已实现。Registry 切片通过真实 PostgreSQL、全量类型检查和生产构建；本轮全量检查 170 passed、16 skipped。真实多 Trial/双 Worker Harbor/E2B 主链、跨进程容量和生产网关条件仍待完成。正式执行入口保持关闭。页面配置见 [本机任务界面](docs/web-console.md)，逐步实施进度见 [实施计划](docs/next-implementation.md)。完整进展与后续顺序见 [开发进展与后续计划](docs/progress-and-next-plan.md)。
+**当前状态：** S0 受限环境单 Trial 主链已验收；S1 Job/Trial/Execution、中文任务页、多 Trial 展开、单进程有界 FIFO 调度、Registry 资产版本网页、审核绑定和跨重启的模型网关请求预算已实现。最新 `make check` 为 171 passed、16 skipped；真实多 Trial/双 Worker Harbor/E2B 主链、跨进程全局容量、网关 TLS 与费用预算等生产条件仍待完成。正式执行入口保持关闭。页面配置见 [本机任务界面](docs/web-console.md)，逐步实施进度见 [实施计划](docs/next-implementation.md)。完整进展与后续顺序见 [开发进展与后续计划](docs/progress-and-next-plan.md)。
 
 首个验证组合为 **Claude Code + DeepSeek V4.1 Flash + 自托管 E2B**。默认使用 DeepSeek 官方 Anthropic 兼容接口；其他服务商必须单独确认协议与模型标识。
 

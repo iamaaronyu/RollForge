@@ -6,7 +6,7 @@
 
 RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → PostgreSQL 执行权 → Worker → 固定 Harbor/E2B → Claude Code → 受限 DeepSeek 会话 → 独立 Verifier → MinIO 原始产物 → Hub 终态。S0 在可信局域网、审核任务、并发 1 范围完成；S1 单 Trial 核心及第六个最小业务页面已实现；页面用合成数据完成真实浏览器/数据库往返，执行侧已有独立真实模型验收。
 
-当前是可复现的实验执行底座。网页已支持受控任务创建、列表、评分、执行历史，以及 Registry 资产登记、版本浏览和基于私有 revision 的 Job 创建；Run 仍只能匹配部署者审核目录。Job 可创建 1–1000 个确定性 Trial 并分页查看。单进程有界持续调度、FIFO 队列和租约恢复已实现；真实多 Worker Harbor/E2B 链尚未复验。Registry API/UI 已由真实 PostgreSQL、类型检查和生产构建验证；本轮完整 make check 为 170 passed、16 skipped、1 项弃用警告。跳过项包含当前未提供的固定 MinIO 测试二进制和历史 Harbor 轨迹样本。正式执行入口保持关闭。Linux 主机现通过 Tailscale 地址 `100.106.244.122` 访问；本轮检查确认 Ubuntu 22.04、6.8 内核、KVM 和 E2B 服务可用。
+当前是可复现的实验执行底座。网页已支持受控任务创建、列表、评分、执行历史，以及 Registry 资产登记、版本浏览和基于私有 revision 的 Job 创建；Run 仍只能匹配部署者审核目录。Job 可创建 1–1000 个确定性 Trial 并分页查看。单进程有界持续调度、FIFO 队列和租约恢复已实现；真实多 Worker Harbor/E2B 链尚未复验。Registry API/UI 和网关预算改动已由真实 PostgreSQL、类型检查和生产构建验证；本轮完整 `make check` 为 171 passed、16 skipped、1 项弃用警告。跳过项包含当前未提供的固定 MinIO 测试二进制和历史 Harbor 轨迹样本。正式执行入口保持关闭。Linux 主机现通过 Tailscale 地址 `100.106.244.122` 访问；本轮检查确认 Ubuntu 22.04、6.8 内核、KVM 和 E2B 服务可用。
 
 ## 已完成的开发项
 
@@ -17,7 +17,7 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 | 固定运行组合 | Harbor 0.24.0、E2B 2.46.0、Claude Code 2.1.81、DeepSeek 官方 Anthropic Messages/deepseek-flash | 控制面与 Runtime 分开锁依赖；没有 Fork Harbor Core |
 | 自托管 E2B | Linux/KVM、官方固定部署、SDK smoke、宿主预检与恢复脚本 | 约 8 GiB 测试机先验收并发 1；不承诺一般任务容量 |
 | S0 真实执行 | 示例任务、原生结果解析、评分与零分、Agent/Verifier 故障、超时、重复取消清理 | 有真实模型/E2B 证据；零分与基础设施失败分开 |
-| 凭证与验证隔离 | Mac 网关保留上游 Key，Sandbox 使用短期受限会话，独立 Verifier，网络负向探测与输出凭证扫描 | 会话具备限次/期限/单次输出限制；实验 HTTP、内存预算和节点级网络例外不满足生产条件 |
+| 凭证与验证隔离 | Mac 网关保留上游 Key，Sandbox 使用短期受限会话，独立 Verifier，网络负向探测与输出凭证扫描 | 会话限期、限次与输出限制已实现；SQLite 账本原子持久化请求次数。网关仍为 LAN HTTP，缺部署认证、token 级费用预算及生产密钥管理 |
 | 部署恢复 | 服务重启、宿主重启后人工恢复隧道与防火墙，再次真实运行 | 验证的是人工恢复流程，无人值守恢复尚未实现 |
 | 领域契约 | Job/Trial/Execution、Revision 引用、不可变快照、状态机、租约与 fencing、RunnableBinding | Retry 创建新 Execution，保留逻辑 Trial/Attempt；快照不接受任意凭证字段 |
 | PostgreSQL | 表、索引、约束、可回退迁移；创建、领取、续租、完成、有界过期回收 | 真实竞争、跳过锁、旧执行拒绝、零分与幂等、预算耗尽和迁移往返通过 |
@@ -35,7 +35,7 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 
 近期切片验收：调度器 `make check` 181 passed、2 skipped，`make runtime-check` 9 passed；Registry 绑定 `make check` 184 passed、2 skipped；Registry 页面及资产发现最新 `make check` 170 passed、16 skipped、1 项 Starlette/httpx 弃用警告。最新检查中的 16 项跳过包括未提供固定 MinIO 测试二进制及历史 Harbor 轨迹样本；真实 PostgreSQL 迁移与 API 测试均运行通过。以往专用 MinIO 验收仍保留在对应历史记录中，不把跳过计作此次 MinIO 通过。
 
-证据入口：[S0 隔离与恢复](validation/2026-10-06-isolation-recovery.md)、[数据库](validation/2026-10-06-s1-postgres.md)、[API/SDK](validation/2026-10-06-s1-api.md)、[对象存储与联合恢复](validation/2026-10-06-s1-storage.md)、[真实 Worker](validation/2026-10-06-s1-worker.md)、[多 Trial](validation/2026-10-26-multitrial.md)、[FIFO 调度](validation/2026-10-26-scheduler.md)、[Registry 运行绑定](validation/2026-10-26-registry-binding.md)。早期验收文档保留当时尚未实现的历史边界；当前结论以上述最新记录和代码为准。
+证据入口：[S0 隔离与恢复](validation/2026-10-06-isolation-recovery.md)、[数据库](validation/2026-10-06-s1-postgres.md)、[API/SDK](validation/2026-10-06-s1-api.md)、[对象存储与联合恢复](validation/2026-10-06-s1-storage.md)、[真实 Worker](validation/2026-10-06-s1-worker.md)、[多 Trial](validation/2026-10-26-multitrial.md)、[FIFO 调度](validation/2026-10-26-scheduler.md)、[Registry 运行绑定](validation/2026-10-26-registry-binding.md)、[Registry 页面](validation/2026-10-26-registry-ui.md)、[网关持久预算](validation/2026-10-26-gateway-budget.md)。早期验收文档保留当时尚未实现的历史边界；当前结论以上述最新记录和代码为准。
 
 ## 建议的后续开发顺序
 
@@ -81,9 +81,9 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 
 ### 正式开放前并行完成：网关与权限加固
 
-把实验网关改为服务化 TLS 接入、持久化且原子扣减的会话预算、部署认证、密钥轮换和撤销。明确预算包含哪些请求/token以及失败/重试如何计费。补充用户会话登录、Worker 权限范围、对象存储最小权限和租户隔离；未知任务使用前需独立隔离验收。
+把实验网关改为服务化 TLS 接入和部署认证，并定义 token 级费用预算、密钥轮换和撤销。请求次数预算已使用 SQLite 原子持久化；仍需明确 token 预算及失败/重试如何计费。补充用户会话登录、Worker 权限范围、对象存储最小权限和租户隔离；未知任务使用前需独立隔离验收。
 
-验收：网关重启不能重置预算，重复/并发请求不能超额；凭证不进入 Sandbox、日志或快照；跨用户/Worker/对象访问拒绝；节点网络策略不能扩大其他租户权限。正式开关需要这些条件及对应真实主链证据，不能只看网页可操作。
+验收：网关重启不能重置请求/费用预算，重复/并发请求不能超额；TLS 与部署认证到位；凭证不进入 Sandbox、日志或快照；跨用户/Worker/对象访问拒绝；节点网络策略不能扩大其他租户权限。正式开关需要这些条件及对应真实主链证据，不能只看网页可操作。
 
 ## 分工与交付流程
 
