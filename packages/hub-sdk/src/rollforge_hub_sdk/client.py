@@ -10,6 +10,8 @@ from rollforge_schemas.api import (
     ErrorCode,
     FinishRequest,
     JobCreateRequest,
+    RecoveryRequest,
+    RecoveryResult,
     RenewRequest,
 )
 from rollforge_schemas.domain import HealthResponse
@@ -155,6 +157,14 @@ class HubClient:
             "POST", "/api/v1/worker/leases/claim", (body or ClaimRequest()).model_dump(mode="json")
         )
         return None if response.status_code == 204 else self._decode(response, Lease)
+
+    async def recover_expired(self, body: RecoveryRequest | None = None) -> RecoveryResult:
+        response = await self._request(
+            "POST",
+            "/api/v1/worker/leases/recover",
+            (body or RecoveryRequest()).model_dump(mode="json"),
+        )
+        return self._decode(response, RecoveryResult)
 
     async def renew(self, body: RenewRequest) -> Lease:
         response = await self._request(

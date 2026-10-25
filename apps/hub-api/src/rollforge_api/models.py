@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     String,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -40,7 +41,7 @@ class Trial(Base):
         UniqueConstraint("job_id", "attempt_index", name="uq_trials_job_attempt"),
         CheckConstraint("attempt_index >= 0", name="ck_trials_attempt"),
         CheckConstraint("fencing_token >= 0", name="ck_trials_token"),
-        Index("ix_trials_queue", "status", "id"),
+        Index("ix_trials_queue", "status", "queued_at", "job_id", "attempt_index"),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True)
     job_id: Mapped[UUID] = mapped_column(ForeignKey("jobs.id"))
@@ -49,6 +50,7 @@ class Trial(Base):
     )
     attempt_index: Mapped[int] = mapped_column(default=0)
     fencing_token: Mapped[int] = mapped_column(default=0)
+    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Execution(Base):

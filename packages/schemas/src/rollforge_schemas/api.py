@@ -58,6 +58,14 @@ class ClaimRequest(Contract):
     runnable_only: bool = False
 
 
+class RecoveryRequest(Contract):
+    limit: int = Field(default=100, ge=1, le=1000, strict=True)
+
+
+class RecoveryResult(Contract):
+    recovered_count: int = Field(ge=0, le=1000, strict=True)
+
+
 class LeaseReference(Contract):
     trial_id: UUID
     execution_id: UUID

@@ -6,13 +6,13 @@
 
 RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → PostgreSQL 执行权 → Worker → 固定 Harbor/E2B → Claude Code → 受限 DeepSeek 会话 → 独立 Verifier → MinIO 原始产物 → Hub 终态。S0 在可信局域网、审核任务、并发 1 范围完成；S1 单 Trial 核心及第六个最小业务页面已实现；页面用合成数据完成真实浏览器/数据库往返，执行侧已有独立真实模型验收。
 
-当前是可复现的实验执行底座。网页已支持受控任务创建、列表、评分与执行历史；Job 可创建 1–1000 个确定性 Trial 并分页查看，Worker 仍按单 Trial 领取，持续调度仍为后续工作。Registry 资产版本已实现，但还未解析为可运行快照。正式执行入口保持关闭。Linux 主机现通过 Tailscale 地址 `100.106.244.122` 访问；本轮检查确认 Ubuntu 22.04、6.8 内核、KVM 和 E2B 服务可用。多 Trial 的真实 Harbor/E2B/模型链尚未复验。
+当前是可复现的实验执行底座。网页已支持受控任务创建、列表、评分与执行历史；Job 可创建 1–1000 个确定性 Trial 并分页查看。单进程有界持续调度、FIFO 队列和租约恢复已实现并通过真实 PostgreSQL/API 与全量离线/存储检查；真实多 Worker Harbor/E2B 链尚未复验。Registry 资产版本已实现，但还未解析为可运行快照。正式执行入口保持关闭。Linux 主机现通过 Tailscale 地址 `100.106.244.122` 访问；本轮检查确认 Ubuntu 22.04、6.8 内核、KVM 和 E2B 服务可用。
 
 ## 已完成的开发项
 
 | 模块 | 已交付内容 | 验证与边界 |
 |---|---|---|
-| 工程框架 | API/Web/Worker/Scheduler 分目录，共享 Python 包，独立 Runtime，依赖锁、配置示例、Make 命令与 CI | 框架不表示每个服务已有业务实现；Scheduler 仅有导入检查 |
+| 工程框架 | API/Web/Worker/Scheduler 分目录，共享 Python 包，独立 Runtime，依赖锁、配置示例、Make 命令与 CI | Scheduler 已实现单进程受限并发、FIFO 和过期回收；仍需真实双 Worker 和部署验收 |
 | 开发与发布 | 中文项目文档、公开代码排除规则、每 4 小时正常 commit/push 自动检查 | 依赖桌面应用与电脑运行；不上传凭证、原始内部规划、日志或轨迹，不强推 |
 | 固定运行组合 | Harbor 0.24.0、E2B 2.46.0、Claude Code 2.1.81、DeepSeek 官方 Anthropic Messages/deepseek-flash | 控制面与 Runtime 分开锁依赖；没有 Fork Harbor Core |
 | 自托管 E2B | Linux/KVM、官方固定部署、SDK smoke、宿主预检与恢复脚本 | 约 8 GiB 测试机先验收并发 1；不承诺一般任务容量 |
@@ -29,11 +29,12 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 | Worker | 单次领取、续租、任务归档校验、凭证白名单、独立 Runtime、上传与 pending-commit、resume | 真实 HTTP 主链通过；修复 venv 解释器解析和 Mac 系统代理问题 |
 | 真实 Worker 故障验收 | reward 1.0、0.0、提交响应丢失后恢复、协作式取消清理、同 Trial 新 Execution Retry、旧提交 409 | Sandbox/Firecracker 均为 0；协作取消不代表 Worker/Runtime SIGKILL 或掉电清理已通过 |
 | 前端业务页 | 中文任务创建/列表/详情、服务端审核目录、Execution 历史与生成类型 | 合成数据浏览器验收通过；已有基础产物和主轨迹 Viewer；仍无登录、轮询 |
-| 多 Trial Job | `trial_count` 1–1000、快照确定性展开、样本分页、Job 汇总计数及 Job 级 Execution 游标；页面可创建并展示样本 | 真实 PostgreSQL 创建、幂等、分页、领取、完成及 Retry 身份验收通过；迁移旧数据和拒绝破坏性降级通过；本轮全量 `make check` 172 passed、`make runtime-check` 9 passed。多样本真实 Harbor/E2B/模型验收仍待完成，不标记为完整主链通过 |
+| 多 Trial Job | `trial_count` 1–1000、快照确定性展开、样本分页、Job 汇总计数及 Job 级 Execution 游标；页面可创建并展示样本 | 真实 PostgreSQL 创建、幂等、分页、领取、完成及 Retry 身份验收通过；多样本真实 Harbor/E2B/模型验收仍待完成 |
+| 持续调度 | 有界常驻 Worker、空队列轮询、失败退避、优雅停机、FIFO 队列和租约自动回收 | PostgreSQL FIFO、双领取竞争、回收 API 与迁移通过；真实双 Worker Harbor/E2B、进程重启、全局容量限制仍待验收 |
 
-真实主链提交记录为 `make check` 140 项全部通过、无跳过，`make runtime-check` 9 项通过。该数字是有相应环境时的历史验收证据；普通检查未提供数据库/MinIO 时会跳过专项，不能据此声称再次通过真实集成。
+本轮完整检查：`make check` 为 181 passed、2 skipped（依赖未提供的历史 Harbor 轨迹/原生输出样本），真实 PostgreSQL 与 MinIO 专项均运行；`make runtime-check` 9 passed，调度器和 Worker 导入检查通过。以往无专用数据库/MinIO 环境运行时出现的跳过不计作真实集成通过。
 
-证据入口：[S0 隔离与恢复](validation/2026-10-06-isolation-recovery.md)、[数据库](validation/2026-10-06-s1-postgres.md)、[API/SDK](validation/2026-10-06-s1-api.md)、[对象存储与联合恢复](validation/2026-10-06-s1-storage.md)、[真实 Worker](validation/2026-10-06-s1-worker.md)。早期验收文档保留当时尚未实现的历史边界；当前结论以上述最新记录和代码为准。
+证据入口：[S0 隔离与恢复](validation/2026-10-06-isolation-recovery.md)、[数据库](validation/2026-10-06-s1-postgres.md)、[API/SDK](validation/2026-10-06-s1-api.md)、[对象存储与联合恢复](validation/2026-10-06-s1-storage.md)、[真实 Worker](validation/2026-10-06-s1-worker.md)、[多 Trial](validation/2026-10-26-multitrial.md)、[FIFO 调度](validation/2026-10-26-scheduler.md)。早期验收文档保留当时尚未实现的历史边界；当前结论以上述最新记录和代码为准。
 
 ## 建议的后续开发顺序
 
@@ -63,11 +64,11 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 
 验收：相同输入重放不会重复创建样本；修改任务生成新 Revision；未授权/未审核资产不可执行；Retry 不改变评测样本数量。先小批样本，再验证 100 个逻辑 Trial。
 
-### 4. S3 第二批：持续 Worker 与容量调度
+### 4. S3 第二批：持续 Worker 与容量调度（本地代码及 DB 验收完成，真实并发验收待完成）
 
-将一次执行入口扩展为受控持续 Worker；调度器使用 PostgreSQL 权威队列，提供 FIFO、资源容量、回收、退避和背压。Redis 如引入只做通知/缓存。明确停止接单、优雅退出、续租与回收的关系。
+将一次执行入口扩展为受控持续 Worker；调度器使用 PostgreSQL 权威队列，提供 FIFO、进程内资源容量、回收、退避和背压。已实现进程内并发槽位、空队列轮询、优雅停机与租约回收 API，并完成数据库和代码验收。Redis 如引入只做通知/缓存。明确停止接单、优雅退出、续租与回收的关系。
 
-验收：两个真实 Worker 竞争只执行一次；Worker 重启后记录不丢；旧执行无法提交；资源不足只排队、不无限创建 Sandbox。当前主机先并发 1，资源确认后并发 2；100 个逻辑 Trial 不等于 100 并发。
+验收：数据库测试确认竞争领取唯一、过期回收、Retry fencing 与 FIFO；仍需两个真实 Worker 的 Harbor/E2B 执行、Worker/调度器重启与中断清理验收。当前主机先并发 1，资源确认后并发 2；100 个逻辑 Trial 不等于 100 并发。并发上限按单进程配置，多进程全局上限另行实现。
 
 ### 5. S4：运行可靠性与部署
 

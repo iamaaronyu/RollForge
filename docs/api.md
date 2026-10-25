@@ -7,11 +7,12 @@
 | `GET /api/v1/platform` | 版本、开发阶段与执行能力状态 |
 | `GET /openapi.json` | 自动生成的 API 契约 |
 | `GET /docs` | 交互式 API 文档 |
-| `POST /api/v1/jobs` | USER 创建单 Trial Job；相同 job_id、相同配置幂等返回 200 |
+| `POST /api/v1/jobs` | USER 创建 Job 并按 `trial_count` 展开 1–1000 个 Trial；相同输入幂等 |
 | `GET /api/v1/jobs/{job_id}` | USER 查询自己的 Job；不存在或其他用户的 Job 返回 404 |
 | `POST /api/v1/worker/leases/claim` | WORKER 领取租约；无可领取 Trial 返回 204 |
 | `POST /api/v1/worker/leases/renew` | WORKER 续租；校验身份、执行 ID、token 和有效期 |
 | `POST /api/v1/worker/leases/finish` | WORKER 提交结果元数据；同一结果可幂等重放 |
+| `POST /api/v1/worker/leases/recover` | WORKER 有界回收已过期租约；预算耗尽的 Trial 失败，否则重新排队 |
 
 业务接口已实现，控制面写接口默认关闭。ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED 默认为 false；关闭时创建、领取、续租、完成返回 503 / WRITES_DISABLED。GET 查询仍需认证。Worker 执行与恢复实现见 [Worker 说明](worker.md)，受限 LAN、并发 1 的合成样例真实全链已通过，实验网关的 TLS、持久化预算等生产条件尚未完成，platform 的 execution_enabled 保持 false，control_plane_writes_enabled 单独报告元数据写开关，不表示完成 S0 或开放真实执行。
 
@@ -59,3 +60,5 @@ make check 和 CI 检查实际 API 与导出文件一致，前端 typecheck 检�
 注册表新增 USER 的版本创建、读取和游标分页接口，写入受现有控制面开关约束；版本不可修改，注册不授予执行权限。详细契约和摘要语义见 [Registry](registry.md)。
 
 JobCreateRequest 与 ApprovedJobCreateRequest 支持 `trial_count`（1–1000，省略默认为 1）。创建事务确定性生成 attempt_index 为 0..N-1 的 Trial；相同 job_id、快照和样本数幂等返回，输入不一致冲突。`GET /api/v1/jobs/{job_id}/trials` 按样本序号分页。Job 级 Execution 游标使用跨样本单调递增的 execution_sequence，响应同时提供 attempt_index 与样本内 fencing_token；因此旧单 Trial 客户端中，历史记录的游标值与 fencing token 相同。
+
+Worker 可用租约回收接口请求处理 1–1000 条已过期记录（默认 100）。Hub 在 PostgreSQL 中重新校验期限、状态并锁定 Trial/Execution；未耗尽预算的 Trial 重新入队，耗尽时置为 FAILED。`queued_at` 记录入队和重试时间，队列按 queued_at、Job ID、样本序号稳定 FIFO 排序。用户角色无权执行恢复。

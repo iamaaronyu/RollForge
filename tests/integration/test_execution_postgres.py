@@ -1,7 +1,7 @@
 """专用 PostgreSQL 验收；每个测试创建独立 schema，仅清理自己创建的资源。"""
 
 import asyncio
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -95,6 +95,39 @@ async def test_competing_workers_and_create_idempotency(engine):
     with pytest.raises(SubmissionConflict):
         await service.create_job(changed)
     assert await service.get_job(inputs.job_id, uuid4()) is None
+
+
+async def test_fifo_scheduler_orders_trials_by_enqueue_time_and_sample(engine):
+    service = ExecutionService(engine)
+    first = request()
+    first = first.model_copy(update={"trial_count": 2})
+    second = request()
+    await service.create_job(first)
+    await service.create_job(second)
+    async with engine.begin() as connection:
+        await connection.execute(
+            update(Trial)
+            .where(Trial.job_id == first.job_id)
+            .values(queued_at=datetime(2026, 1, 1, tzinfo=UTC))
+        )
+        await connection.execute(
+            update(Trial)
+            .where(Trial.job_id == second.job_id)
+            .values(queued_at=datetime(2026, 1, 2, tzinfo=UTC))
+        )
+    leases = [await service.claim(uuid4()) for _ in range(3)]
+    assert [lease.job_id for lease in leases] == [first.job_id, first.job_id, second.job_id]
+    assert [lease.snapshot.task.id for lease in leases] == [
+        first.snapshot.task.id,
+        first.snapshot.task.id,
+        second.snapshot.task.id,
+    ]
+    async with engine.connect() as connection:
+        attempts = [
+            await connection.scalar(select(Trial.attempt_index).where(Trial.id == lease.trial_id))
+            for lease in leases
+        ]
+    assert attempts == [0, 1, 0]
 
 
 async def test_skip_locked_claim_does_not_wait(engine):

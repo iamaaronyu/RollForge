@@ -316,11 +316,15 @@ class ExecutionService:
     ) -> Lease | None:
         duration = self.duration(lease_seconds)
         async with self.sessions.begin() as session:
-            query = select(Trial).where(Trial.status == TrialStatus.QUEUED)
+            query = (
+                select(Trial)
+                .join(Job, Job.id == Trial.job_id)
+                .where(Trial.status == TrialStatus.QUEUED)
+            )
             if runnable_only:
-                query = query.join(Job).where(Job.snapshot["runtime"].as_string().is_not(None))
+                query = query.where(Job.snapshot["runtime"].as_string().is_not(None))
             trial = await session.scalar(
-                query.order_by(Trial.job_id, Trial.attempt_index)
+                query.order_by(Trial.queued_at, Job.id, Trial.attempt_index)
                 .with_for_update(of=Trial, skip_locked=True)
                 .limit(1)
             )
@@ -503,5 +507,7 @@ class ExecutionService:
                     else TrialStatus.FAILED
                 )
                 self.trial_state(trial, target)
+                if target == TrialStatus.QUEUED:
+                    trial.queued_at = await self.now(session)
                 recovered += 1
             return recovered

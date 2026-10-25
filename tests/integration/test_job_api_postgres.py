@@ -19,8 +19,8 @@ from rollforge_schemas.api import (
     RenewRequest,
 )
 from rollforge_schemas.domain import RevisionRef, TrialStatus
-from rollforge_schemas.execution import ExecutionSnapshot, ResultCommit
-from sqlalchemy import func, text, update
+from rollforge_schemas.execution import ExecutionSnapshot, ExecutionStatus, ResultCommit
+from sqlalchemy import func, select, text, update
 
 
 @asynccontextmanager
@@ -282,3 +282,28 @@ async def test_multi_trial_expansion_pagination_and_retry_identity(engine):
         assert after_retry.items[0].execution_sequence == 4
         refreshed = await sdk["user"].get_job(job.job_id)
         assert refreshed.trial_count == 3 and refreshed.terminal_trial_count == 1
+
+
+async def test_worker_recovery_api_requeues_only_expired_leases(engine):
+    async with clients(engine) as (_, sdk, _, _, _):
+        job = await sdk["user"].create_job(job_request())
+        lease = await sdk["worker"].claim(ClaimRequest(lease_seconds=30))
+        assert lease.trial_id == job.trial.trial_id
+        assert (await sdk["worker"].recover_expired()).recovered_count == 0
+        async with engine.begin() as connection:
+            await connection.execute(
+                update(Execution)
+                .where(Execution.id == lease.execution_id)
+                .values(expires_at=func.clock_timestamp())
+            )
+        assert (await sdk["worker"].recover_expired()).recovered_count == 1
+        recovered = await sdk["user"].get_job(job.job_id)
+        assert recovered.trial.status == TrialStatus.QUEUED
+        replacement = await sdk["worker"].claim()
+        assert replacement.trial_id == lease.trial_id
+        assert replacement.fencing_token == lease.fencing_token + 1
+        async with engine.connect() as connection:
+            status = await connection.scalar(
+                select(Execution.status).where(Execution.id == lease.execution_id)
+            )
+        assert status == ExecutionStatus.EXPIRED

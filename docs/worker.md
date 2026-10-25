@@ -1,6 +1,6 @@
 # 单 Trial Worker
 
-Worker 已实现一次领取、续租、独立 Runtime 子进程、原始产物上传和提交恢复。默认关闭；仅面向已审核 Task、已批准的受限模型网关和单并发实验环境。真实 Worker → Harbor → E2B → 模型 → 对象存储 → Hub 全链已在受限 LAN、并发 1 的合成样例范围通过。实验网关尚无 TLS 与持久化预算，`platform.execution_enabled` 仍保持 false。本实现不提供通用 Task Registry、用户登录、多租户 Worker 分配或持续调度。
+Worker 支持单次领取，也可由持续调度进程以有限并发反复调用。默认关闭；仅面向已审核 Task、已批准的受限模型网关和受控实验环境。真实 Worker → Harbor → E2B → 模型 → 对象存储 → Hub 单 Trial 全链已在受限 LAN、并发 1 的合成样例范围通过。持续调度代码与真实 PostgreSQL FIFO/租约回收测试已实现；多 Worker 真实 E2B 竞争尚未验收。实验网关尚无 TLS 与持久化预算，`platform.execution_enabled` 仍保持 false。
 
 ## 配置与凭证
 
@@ -20,6 +20,11 @@ Worker 已实现一次领取、续租、独立 Runtime 子进程、原始产物�
 | `ROLLFORGE_OBJECT_STORAGE_ENDPOINT`、`ROLLFORGE_OBJECT_STORAGE_BUCKET` | Worker 与 Hub 使用同一存储 |
 | `ROLLFORGE_OBJECT_STORAGE_ACCESS_KEY`、`ROLLFORGE_OBJECT_STORAGE_SECRET_KEY` | 平台对象存储凭证 |
 | `ROLLFORGE_OBJECT_STORAGE_ALLOW_LOCAL_HTTP` | 默认为 false；仅允许显式本机 HTTP 测试 |
+| `ROLLFORGE_SCHEDULER_ENABLED` | 默认 false；常驻调度进程的显式开关 |
+| `ROLLFORGE_SCHEDULER_CONCURRENCY` | 每个进程 1–16 个 Worker 槽位，默认 1 |
+| `ROLLFORGE_SCHEDULER_POLL_SECONDS` | 空队列轮询间隔，0.1–30 秒 |
+| `ROLLFORGE_SCHEDULER_RECOVERY_SECONDS` | 过期租约回收间隔，1–300 秒 |
+| `ROLLFORGE_SCHEDULER_SHUTDOWN_SECONDS` | 停止接单后等待当前执行的宽限时间，1–3600 秒，默认 300 秒 |
 
 Runtime 会话文件必须是普通文件，权限 0600、直接父目录 0700；包含 `ROLLFORGE_MODEL_SESSION_TOKEN` 和 `E2B_API_KEY`，以及自托管 `E2B_API_URL` / `E2B_SANDBOX_URL` 或 `E2B_DOMAIN`。会话须由已批准的网关分配并限制预算、期限和权限。Worker 不自动创建会话，不接受上游 `ANTHROPIC_API_KEY` 代替受限会话，不展开文件中的环境变量引用。
 
@@ -43,7 +48,11 @@ make worker-check
 UV_CACHE_DIR=.cache/uv uv run python -m rollforge_worker --run
 # 仅恢复指定已有 Execution 的上传或数据库提交，不重跑模型。
 UV_CACHE_DIR=.cache/uv uv run python -m rollforge_worker --run --resume /absolute/private/spool/execution-id
+# 常驻调度；仅在私密服务配置显式启用 scheduler 和 worker 执行后运行。
+UV_CACHE_DIR=.cache/uv uv run python -m rollforge_scheduler --run
 ```
+
+调度器须同时显式启用 `ROLLFORGE_SCHEDULER_ENABLED` 与 `ROLLFORGE_WORKER_RUNS_ENABLED`。它用 `ROLLFORGE_SCHEDULER_CONCURRENCY` 或 `--concurrency` 限制单进程 Worker 槽位（1–16，默认 1）；空队列按配置轮询，失败指数退避，恢复循环调用鉴权租约回收 API。停止时先停止新领取并等待现有执行；超过宽限期后取消 Worker，由 Worker 向 Runtime 发 SIGTERM 并等待 Harbor 清理。过期 Retry 重新排至 FIFO 队尾。此配置只限制单个进程，并非多进程集群的全局容量；部署时必须按所有进程并发之和做容量预算。
 
 每次仅领取一个可运行 Trial，租约 300 秒、每 30 秒续租。任务包和私密快照落入 Execution 独立目录，然后启动固定 Runtime。Harbor 独占 Sandbox 生命周期，Worker 不创建或销毁 Sandbox。租约丢失或 Worker 被取消时向子进程发送 SIGTERM，并等待 Harbor 的清理过程；不使用 SIGKILL 代替清理。操作系统强制终止或主机掉电仍需平台恢复验收，不能依赖 Python finally 保证处理。
 

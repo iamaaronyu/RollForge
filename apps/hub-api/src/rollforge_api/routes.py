@@ -17,6 +17,8 @@ from rollforge_schemas.api import (
     JobCreateRequest,
     LeaseReference,
     Principal,
+    RecoveryRequest,
+    RecoveryResult,
     RenewRequest,
     Role,
 )
@@ -201,6 +203,18 @@ async def get_job(job_id: UUID, identity: User, store: Store):
 async def claim(body: ClaimRequest, identity: Worker, _gate: WriteGate, store: Store):
     lease = await store.claim(identity.subject_id, body.lease_seconds, body.runnable_only)
     return lease if lease is not None else Response(status_code=204)
+
+
+@router.post(
+    "/worker/leases/recover",
+    response_model=RecoveryResult,
+    tags=["worker"],
+    operation_id="recover_expired_leases",
+)
+async def recover_expired_leases(
+    body: RecoveryRequest, identity: Worker, _gate: WriteGate, store: Store
+):
+    return RecoveryResult(recovered_count=await store.recover_expired(body.limit))
 
 
 @router.post(

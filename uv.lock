@@ -923,12 +923,14 @@ source = { editable = "services/scheduler" }
 dependencies = [
     { name = "rollforge-common" },
     { name = "rollforge-schemas" },
+    { name = "rollforge-worker" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "rollforge-common", editable = "packages/common" },
     { name = "rollforge-schemas", editable = "packages/schemas" },
+    { name = "rollforge-worker", editable = "services/worker" },
 ]
 
 [[package]]

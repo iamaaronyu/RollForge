@@ -3,7 +3,7 @@ name = "rollforge-scheduler"
 version = "0.1.0"
 description = "RollForge scheduler"
 requires-python = ">=3.11"
-dependencies = ["rollforge-schemas", "rollforge-common"]
+dependencies = ["rollforge-schemas", "rollforge-common", "rollforge-worker"]
 
 [build-system]
 requires = ["hatchling"]
@@ -15,3 +15,4 @@ packages = ["src/rollforge_scheduler"]
 [tool.uv.sources]
 rollforge-schemas = { workspace = true }
 rollforge-common = { workspace = true }
+rollforge-worker = { workspace = true }
