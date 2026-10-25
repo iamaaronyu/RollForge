@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import Field
 
-from rollforge_schemas.execution import Contract, ExecutionSnapshot, ResultCommit
+from rollforge_schemas.execution import Contract, ExecutionSnapshot, RegistrySelection, ResultCommit
 from rollforge_schemas.storage import StoredFile
 
 
@@ -45,6 +45,14 @@ class ApprovedTaskList(Contract):
 class ApprovedJobCreateRequest(Contract):
     job_id: UUID
     task_id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,64}$")
+    trial_count: int = Field(default=1, ge=1, le=1000, strict=True)
+
+
+class RegistryJobCreateRequest(Contract):
+    job_id: UUID
+    revisions: RegistrySelection
+    timeout_sec: int = Field(default=300, ge=1, le=3600, strict=True)
+    max_executions: int = Field(default=3, ge=1, le=10, strict=True)
     trial_count: int = Field(default=1, ge=1, le=1000, strict=True)
 
 

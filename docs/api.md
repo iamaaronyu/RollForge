@@ -8,6 +8,7 @@
 | `GET /openapi.json` | 自动生成的 API 契约 |
 | `GET /docs` | 交互式 API 文档 |
 | `POST /api/v1/jobs` | USER 创建 Job 并按 `trial_count` 展开 1–1000 个 Trial；相同输入幂等 |
+| `POST /api/v1/jobs/from-revisions` | USER 按 Task/Agent/Model Registry 引用创建 Job；必须匹配部署审核目录 |
 | `GET /api/v1/jobs/{job_id}` | USER 查询自己的 Job；不存在或其他用户的 Job 返回 404 |
 | `POST /api/v1/worker/leases/claim` | WORKER 领取租约；无可领取 Trial 返回 204 |
 | `POST /api/v1/worker/leases/renew` | WORKER 续租；校验身份、执行 ID、token 和有效期 |

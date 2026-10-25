@@ -16,6 +16,14 @@ class Contract(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
 
+class RegistrySelection(Contract):
+    """Job 所选不可变 Registry revision 的摘要引用，不含凭证。"""
+
+    task: RevisionRef
+    agent: RevisionRef
+    model: RevisionRef
+
+
 class ExecutionSnapshot(Contract):
     schema_version: Literal["1"] = "1"
     task: RevisionRef
@@ -24,6 +32,7 @@ class ExecutionSnapshot(Contract):
     timeout_sec: int = Field(default=300, ge=1, le=3600)
     max_executions: int = Field(default=3, ge=1, le=10)
     runtime: RunnableBinding | None = None
+    registry: RegistrySelection | None = None
 
     @model_validator(mode="after")
     def pinned_binding(self):

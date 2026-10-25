@@ -17,7 +17,8 @@ output = storage_tests.output
 
 async def publish(engine, server, store, output, sdk):
     job = await sdk["user"].create_job(
-        JobCreateRequest(job_id=uuid4(), snapshot=request().snapshot)
+        # Viewer 样例只需对象/权限边界，不应通过普通 Job API 提交可运行快照。
+        JobCreateRequest(job_id=uuid4(), snapshot=request(runnable=False).snapshot)
     )
     lease = await sdk["worker"].claim()
     scope = ExecutionScope(

@@ -8,7 +8,7 @@
 | 1 | 用户范围 Job 列表与 Execution 历史 | 游标分页、越权拒绝、Retry 历史、无 Worker 身份泄露 | 已实现并通过本轮验收 |
 | 2 | 中文单任务创建与查询页 | 服务端审核目录、token 不进浏览器、真实数据库页面往返 | 已实现并通过本轮验收 |
 | 3 | 受控产物与轨迹 Viewer | 所有权、对象作用域、摘要与大小检查，失败定位 | 基础索引/文本及主轨迹时间线已实现；多模态/子轨迹、搜索与聚合待开发 |
-| 4 | 不可变 Revision Registry 与批量展开 | 版本冻结、幂等展开、Retry 不增加样本数 | Registry 与单快照多 Trial 确定性展开已实现；真实 PostgreSQL 及迁移回退通过；Registry 引用解析、真实多 Trial Harbor/E2B/模型验收待完成，见 [验收记录](validation/2026-10-26-multitrial.md) |
+| 4 | 不可变 Revision Registry 与批量展开 | 版本冻结、幂等展开、Retry 不增加样本数 | Registry 引用已解析为现有 Worker 绑定，并要求与部署审核快照完全一致；真实 PostgreSQL 所有权/摘要/拒绝测试通过；Registry UI、真实多 Trial Harbor/E2B/模型验收待完成，见 [验收记录](validation/2026-10-26-registry-binding.md) |
 | 5 | 持续 Worker 与容量调度 | 真双 Worker、背压、重启恢复、有界回收 | 有界常驻 Worker、FIFO 入队、退避、优雅停机与鉴权租约回收已实现；18 项真实 PostgreSQL 执行/API 测试通过；双 Worker Harbor/E2B、进程重启和全局容量验收待完成，见 [验收记录](validation/2026-10-26-scheduler.md) |
 | 6 | 部署与故障演练 | SIGKILL/掉电、限流、备份读回、监控与升级恢复 | 待开发 |
 | 并行前置 | 网关与权限加固 | TLS、持久化原子预算、登录、Worker/对象权限 | 正式开放前完成 |
@@ -20,3 +20,5 @@
 2026-10-26：新增 Job 多 Trial 样本数、确定性展开、列表分页和摘要；Execution 历史游标改为 Job 内单调序号，以容纳不同样本交错重试。数据库迁移安全回填既有单样本 Job，并在降级会丢失样本时拒绝回退。代码和 DB 验收完成；多 Trial Harbor/E2B/模型主链与 Registry 运行绑定是本阶段剩余关卡。
 
 2026-10-26：开始 S1 调度切片，增加有界持续 Worker、指数退避、SIGTERM 清理和 Worker 鉴权租约回收 API；队列按入队时间、Job ID、样本序号排序，重试重新入队到队尾。进程容量为本地上限，不代表多进程集群额度。真实双 Worker Harbor/E2B 和中断恢复仍需验证。
+
+2026-10-26：增加 `/jobs/from-revisions`，把用户拥有的 Task/Agent/Model revision 安全绑定至部署者审核快照，并在执行快照中保留注册引用。普通 `/jobs` 拒绝带 `runtime` 的请求，防止用户绕过审核。真实多 Trial Harbor/E2B/模型验收和 Registry 网页仍待完成。

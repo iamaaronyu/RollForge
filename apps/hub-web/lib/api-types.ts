@@ -39,6 +39,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/jobs/from-revisions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Create Job From Revisions */
+        readonly post: operations["create_job_from_revisions"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/jobs/{job_id}": {
         readonly parameters: {
             readonly query?: never;
@@ -439,6 +456,7 @@ export interface components {
              */
             readonly max_executions: number;
             readonly model: components["schemas"]["RevisionRef"];
+            readonly registry?: components["schemas"]["RegistrySelection"] | null;
             readonly runtime?: components["schemas"]["RunnableBinding"] | null;
             /**
              * Schema Version
@@ -640,6 +658,39 @@ export interface components {
         readonly RecoveryResult: {
             /** Recovered Count */
             readonly recovered_count: number;
+        };
+        /** RegistryJobCreateRequest */
+        readonly RegistryJobCreateRequest: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            readonly job_id: string;
+            /**
+             * Max Executions
+             * @default 3
+             */
+            readonly max_executions: number;
+            readonly revisions: components["schemas"]["RegistrySelection"];
+            /**
+             * Timeout Sec
+             * @default 300
+             */
+            readonly timeout_sec: number;
+            /**
+             * Trial Count
+             * @default 1
+             */
+            readonly trial_count: number;
+        };
+        /**
+         * RegistrySelection
+         * @description Job 所选不可变 Registry revision 的摘要引用，不含凭证。
+         */
+        readonly RegistrySelection: {
+            readonly agent: components["schemas"]["RevisionRef"];
+            readonly model: components["schemas"]["RevisionRef"];
+            readonly task: components["schemas"]["RevisionRef"];
         };
         /** RenewRequest */
         readonly RenewRequest: {
@@ -1042,6 +1093,84 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": components["schemas"]["ApprovedJobCreateRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    readonly create_job_from_revisions: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RegistryJobCreateRequest"];
             };
         };
         readonly responses: {

@@ -12,6 +12,7 @@ from rollforge_schemas.api import (
     JobCreateRequest,
     RecoveryRequest,
     RecoveryResult,
+    RegistryJobCreateRequest,
     RenewRequest,
 )
 from rollforge_schemas.domain import HealthResponse
@@ -95,6 +96,12 @@ class HubClient:
 
     async def create_job(self, body: JobCreateRequest) -> JobView:
         response = await self._request("POST", "/api/v1/jobs", body.model_dump(mode="json"))
+        return self._decode(response, JobView)
+
+    async def create_job_from_revisions(self, body: RegistryJobCreateRequest) -> JobView:
+        response = await self._request(
+            "POST", "/api/v1/jobs/from-revisions", body.model_dump(mode="json")
+        )
         return self._decode(response, JobView)
 
     async def get_job(self, job_id: UUID) -> JobView:

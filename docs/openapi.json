@@ -261,6 +261,16 @@
           "model": {
             "$ref": "#/components/schemas/RevisionRef"
           },
+          "registry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegistrySelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "runtime": {
             "anyOf": [
               {
@@ -683,6 +693,68 @@
           "recovered_count"
         ],
         "title": "RecoveryResult",
+        "type": "object"
+      },
+      "RegistryJobCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "max_executions": {
+            "default": 3,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Executions",
+            "type": "integer"
+          },
+          "revisions": {
+            "$ref": "#/components/schemas/RegistrySelection"
+          },
+          "timeout_sec": {
+            "default": 300,
+            "maximum": 3600.0,
+            "minimum": 1.0,
+            "title": "Timeout Sec",
+            "type": "integer"
+          },
+          "trial_count": {
+            "default": 1,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Trial Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id",
+          "revisions"
+        ],
+        "title": "RegistryJobCreateRequest",
+        "type": "object"
+      },
+      "RegistrySelection": {
+        "additionalProperties": false,
+        "description": "Job 所选不可变 Registry revision 的摘要引用，不含凭证。",
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/RevisionRef"
+          },
+          "model": {
+            "$ref": "#/components/schemas/RevisionRef"
+          },
+          "task": {
+            "$ref": "#/components/schemas/RevisionRef"
+          }
+        },
+        "required": [
+          "task",
+          "agent",
+          "model"
+        ],
+        "title": "RegistrySelection",
         "type": "object"
       },
       "RenewRequest": {
@@ -1611,6 +1683,102 @@
           }
         ],
         "summary": "Create Approved Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/from-revisions": {
+      "post": {
+        "operationId": "create_job_from_revisions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryJobCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Job From Revisions",
         "tags": [
           "jobs"
         ]

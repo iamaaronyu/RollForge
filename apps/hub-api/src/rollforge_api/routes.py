@@ -93,6 +93,10 @@ def owned(lease: LeaseReference, identity: Principal):
 
 @router.post("/jobs", response_model=JobView, tags=["jobs"], operation_id="create_job")
 async def create_job(body: JobCreateRequest, identity: User, _gate: WriteGate, store: Store):
+    if body.snapshot.runtime is not None:
+        raise ApiFailure(
+            403, ErrorCode.FORBIDDEN, "可运行 Job 必须使用已审核的任务或 Registry 版本"
+        )
     return await store.create_job(
         CreateJob(
             job_id=body.job_id,

@@ -12,24 +12,34 @@ from rollforge_api.models import Execution
 from rollforge_common.settings import Settings
 from rollforge_hub_sdk.client import HubClient, HubError
 from rollforge_schemas.api import (
+    ApprovedTaskBinding,
     ClaimRequest,
     FinishRequest,
     JobCreateRequest,
     LeaseReference,
+    RegistryJobCreateRequest,
     RenewRequest,
 )
 from rollforge_schemas.domain import RevisionRef, TrialStatus
-from rollforge_schemas.execution import ExecutionSnapshot, ExecutionStatus, ResultCommit
+from rollforge_schemas.execution import (
+    ExecutionSnapshot,
+    ExecutionStatus,
+    RegistrySelection,
+    ResultCommit,
+)
+from rollforge_schemas.registry import AgentSpec, ModelSpec, RevisionCreate, TaskSpec
+from rollforge_schemas.runnable import RunnableBinding
 from sqlalchemy import func, select, text, update
 
 
 @asynccontextmanager
-async def clients(engine, writes=True):
+async def clients(engine, writes=True, approved_tasks_file=None):
     identities = {name: uuid4() for name in ("user", "other_user", "worker", "other_worker")}
     tokens = {name: secrets.token_urlsafe(32) for name in identities}
     settings = Settings(
         _env_file=None,
         control_plane_writes_enabled=writes,
+        approved_tasks_file=approved_tasks_file,
         api_credentials=SecretStr(
             json.dumps(
                 [
@@ -307,3 +317,143 @@ async def test_worker_recovery_api_requeues_only_expired_leases(engine):
                 select(Execution.status).where(Execution.id == lease.execution_id)
             )
         assert status == ExecutionStatus.EXPIRED
+
+
+async def test_registry_revisions_resolve_only_to_approved_runtime(engine, tmp_path):
+    import json
+    from pathlib import Path
+
+    task_id, agent_id, model_id = uuid4(), uuid4(), uuid4()
+    content_digest = "sha256:" + "e" * 64
+    archive_digest = "sha256:" + "f" * 64
+    binding = RunnableBinding(
+        task_archive_key="tasks/reviewed.tar.gz",
+        task_archive_digest=archive_digest,
+        model_base_url="https://gateway.test",
+    )
+    approved_snapshot = ExecutionSnapshot(
+        task=RevisionRef(id=task_id, revision=1, digest=content_digest),
+        agent=RevisionRef(id=agent_id, revision=1, digest=binding.agent_digest),
+        model=RevisionRef(id=model_id, revision=1, digest=binding.model_digest),
+        runtime=binding,
+    )
+    catalog_path = Path(tmp_path) / "approved.json"
+    catalog_path.write_text(
+        json.dumps(
+            [
+                ApprovedTaskBinding(
+                    id="reviewed-demo", label="审核样例", snapshot=approved_snapshot
+                ).model_dump(mode="json")
+            ]
+        )
+    )
+    catalog_path.chmod(0o600)
+
+    async with clients(engine, approved_tasks_file=catalog_path) as (_, sdk, _, _, _):
+        task_revision = await sdk["user"].create_revision(
+            RevisionCreate(
+                asset_id=task_id,
+                revision=1,
+                spec=TaskSpec(archive_key=binding.task_archive_key, archive_digest=archive_digest),
+            )
+        )
+        agent_revision = await sdk["user"].create_revision(
+            RevisionCreate(asset_id=agent_id, revision=1, spec=AgentSpec())
+        )
+        model_revision = await sdk["user"].create_revision(
+            RevisionCreate(
+                asset_id=model_id,
+                revision=1,
+                spec=ModelSpec(model_base_url=binding.model_base_url),
+            )
+        )
+        selection = RegistrySelection(
+            task=RevisionRef(id=task_id, revision=1, digest=task_revision.digest),
+            agent=RevisionRef(id=agent_id, revision=1, digest=agent_revision.digest),
+            model=RevisionRef(id=model_id, revision=1, digest=model_revision.digest),
+        )
+        body = RegistryJobCreateRequest(job_id=uuid4(), revisions=selection, trial_count=2)
+        job = await sdk["user"].create_job_from_revisions(body)
+        assert job.trial_count == 2
+        assert job.snapshot.runtime == binding
+        assert job.snapshot.registry == selection
+        assert job.snapshot.task.digest == content_digest
+        assert await sdk["user"].create_job_from_revisions(body) == job
+
+        with pytest.raises(HubError) as error:
+            await sdk["other_user"].create_job_from_revisions(
+                body.model_copy(update={"job_id": uuid4()})
+            )
+        assert error.value.status_code == 404
+
+        invalid = body.model_copy(
+            update={
+                "revisions": selection.model_copy(
+                    update={
+                        "model": selection.model.model_copy(update={"digest": "sha256:" + "0" * 64})
+                    }
+                )
+            }
+        )
+        with pytest.raises(HubError) as error:
+            await sdk["user"].create_job_from_revisions(invalid)
+        assert error.value.status_code == 409
+
+
+async def test_registry_revision_cannot_expand_deployment_approval(engine):
+    async with clients(engine) as (_, sdk, _, _, _):
+        task_revision = await sdk["user"].create_revision(
+            RevisionCreate(
+                asset_id=uuid4(),
+                revision=1,
+                spec=TaskSpec(
+                    archive_key="tasks/unreviewed.tar.gz",
+                    archive_digest="sha256:" + "1" * 64,
+                ),
+            )
+        )
+        agent_revision = await sdk["user"].create_revision(
+            RevisionCreate(asset_id=uuid4(), revision=1, spec=AgentSpec())
+        )
+        model_revision = await sdk["user"].create_revision(
+            RevisionCreate(
+                asset_id=uuid4(),
+                revision=1,
+                spec=ModelSpec(model_base_url="https://attacker.example"),
+            )
+        )
+        body = RegistryJobCreateRequest(
+            job_id=uuid4(),
+            revisions=RegistrySelection(
+                task=RevisionRef(
+                    id=task_revision.asset_id, revision=1, digest=task_revision.digest
+                ),
+                agent=RevisionRef(
+                    id=agent_revision.asset_id, revision=1, digest=agent_revision.digest
+                ),
+                model=RevisionRef(
+                    id=model_revision.asset_id, revision=1, digest=model_revision.digest
+                ),
+            ),
+        )
+        with pytest.raises(HubError) as error:
+            await sdk["user"].create_job_from_revisions(body)
+        assert error.value.status_code == 403
+
+
+async def test_user_cannot_create_runnable_job_with_unapproved_snapshot(engine):
+    async with clients(engine) as (_, sdk, _, _, _):
+        runtime = RunnableBinding(
+            task_archive_key="tasks/unreviewed.tar.gz",
+            task_archive_digest="sha256:" + "1" * 64,
+            model_base_url="https://gateway.test",
+        )
+        snapshot = ExecutionSnapshot(
+            task=RevisionRef(id=uuid4(), revision=1, digest="sha256:" + "2" * 64),
+            agent=RevisionRef(id=uuid4(), revision=1, digest=runtime.agent_digest),
+            model=RevisionRef(id=uuid4(), revision=1, digest=runtime.model_digest),
+            runtime=runtime,
+        )
+        with pytest.raises(HubError) as error:
+            await sdk["user"].create_job(JobCreateRequest(job_id=uuid4(), snapshot=snapshot))
+        assert error.value.status_code == 403

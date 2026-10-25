@@ -8,6 +8,8 @@ Job 冻结一个 ExecutionSnapshot，并可确定性展开 1–1000 个逻辑 Tr
 
 保存版本化的原始输出，再生成 Viewer 投影。缺失的 usage/reasoning 表示未知；零分是有效评分，不能归类为基础设施失败。指标分别展示通过率与评分覆盖率。
 
+Registry Job API 校验用户所有权、revision 摘要和部署者审核的精确运行组合；快照同时保留注册规范摘要与 Worker 使用的 Task 内容/运行绑定摘要。直接 Job API 不允许传入可运行 runtime。
+
 首个验证 Agent 为 Claude Code，模型选择 DeepSeek V4.1 Flash，使用官方 Anthropic 兼容 API。控制面与独立运行环境分别锁定依赖，不把 Harbor 和模型 SDK 全部引入 API 进程。
 
 S0 自托管部署与隔离、S1 单 Trial Worker 主链已有真实环境证据。实验网关缺少 TLS、持久化预算等生产条件，Hub 执行入口保持关闭；未知任务和多租户隔离尚未验收。
