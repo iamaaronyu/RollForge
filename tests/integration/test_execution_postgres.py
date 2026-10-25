@@ -209,3 +209,83 @@ async def test_concurrent_submissions_are_atomic(engine):
         service.finish(lease, accepted[0].result),
     )
     assert replay == [accepted[0], accepted[0]]
+
+
+async def test_multi_trial_migration_backfills_legacy_job_and_execution(engine):
+    from uuid import uuid4
+
+    config = Config(str(ROOT / "apps/hub-api/alembic.ini"))
+    job_id, owner_id, trial_id, execution_id, worker_id = [uuid4() for _ in range(5)]
+    legacy_snapshot = request().snapshot.model_dump_json()
+    async with engine.begin() as connection:
+        config.attributes["connection"] = connection.sync_connection
+        await connection.run_sync(lambda sync: command.downgrade(config, "0002_registry"))
+        await connection.execute(
+            text("""
+                INSERT INTO jobs (id, owner_id, snapshot)
+                VALUES (:id, :owner, CAST(:snapshot AS jsonb))
+            """),
+            {"id": job_id, "owner": owner_id, "snapshot": legacy_snapshot},
+        )
+        await connection.execute(
+            text("""
+                INSERT INTO trials (id, job_id, status, attempt_index, fencing_token)
+                VALUES (:id, :job, 'RUNNING', 0, 1)
+            """),
+            {"id": trial_id, "job": job_id},
+        )
+        await connection.execute(
+            text("""
+                INSERT INTO executions (
+                    id, trial_id, worker_id, fencing_token, status, expires_at, result
+                ) VALUES (:id, :trial, :worker, 1, 'RUNNING', now() + interval '5 minutes', NULL)
+            """),
+            {"id": execution_id, "trial": trial_id, "worker": worker_id},
+        )
+        await connection.run_sync(lambda sync: command.upgrade(config, "head"))
+        assert (
+            await connection.scalar(
+                text("SELECT trial_count FROM jobs WHERE id = :id"), {"id": job_id}
+            )
+            == 1
+        )
+        assert (
+            await connection.scalar(
+                text("SELECT execution_sequence FROM jobs WHERE id = :id"), {"id": job_id}
+            )
+            == 1
+        )
+        migrated = (
+            await connection.execute(
+                text("SELECT job_id, job_sequence FROM executions WHERE id = :id"),
+                {"id": execution_id},
+            )
+        ).one()
+        assert migrated == (job_id, 1)
+        assert (
+            await connection.run_sync(
+                lambda sync: compare_metadata(MigrationContext.configure(sync), Base.metadata)
+            )
+            == []
+        )
+
+
+async def test_multi_trial_migration_downgrade_refuses_to_drop_samples(engine):
+    from sqlalchemy.exc import DBAPIError
+
+    service = ExecutionService(engine)
+    batch = request().model_copy(update={"trial_count": 2})
+    await service.create_job(batch)
+    config = Config(str(ROOT / "apps/hub-api/alembic.ini"))
+
+    with pytest.raises(DBAPIError):
+        async with engine.begin() as connection:
+            await connection.run_sync(lambda sync: downgrade_to_registry(sync, config))
+
+    saved = await service.get_job(batch.job_id, batch.owner_id)
+    assert saved is not None and saved.trial_count == 2
+
+
+def downgrade_to_registry(connection, config):
+    config.attributes["connection"] = connection
+    command.downgrade(config, "0002_registry")

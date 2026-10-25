@@ -39,6 +39,7 @@ class CreateJob(Contract):
     job_id: UUID
     owner_id: UUID
     snapshot: ExecutionSnapshot
+    trial_count: int = Field(default=1, ge=1, le=1000, strict=True)
 
 
 class ExecutionStatus(StrEnum):
@@ -89,7 +90,7 @@ class TrialView(Contract):
     trial_id: UUID
     job_id: UUID
     status: TrialStatus
-    attempt_index: Literal[0] = 0
+    attempt_index: int = Field(default=0, ge=0, lt=1000, strict=True)
     fencing_token: int = Field(ge=0)
     result: ResultCommit | None = None
 
@@ -99,11 +100,15 @@ class JobView(Contract):
     owner_id: UUID
     snapshot: ExecutionSnapshot
     trial: TrialView
+    trial_count: int = Field(ge=1, le=1000)
+    terminal_trial_count: int = Field(ge=0, le=1000)
 
 
 class JobSummary(Contract):
     job_id: UUID
     trial: TrialView
+    trial_count: int = Field(ge=1, le=1000)
+    terminal_trial_count: int = Field(ge=0, le=1000)
 
 
 class JobList(Contract):
@@ -113,6 +118,8 @@ class JobList(Contract):
 
 class ExecutionView(Contract):
     execution_id: UUID
+    execution_sequence: int = Field(ge=1, strict=True)
+    attempt_index: int = Field(default=0, ge=0, lt=1000, strict=True)
     fencing_token: int = Field(ge=1)
     status: ExecutionStatus
     expires_at: datetime
@@ -121,6 +128,11 @@ class ExecutionView(Contract):
 
 class ExecutionList(Contract):
     items: tuple[ExecutionView, ...]
+    next_cursor: int | None = None
+
+
+class TrialList(Contract):
+    items: tuple[TrialView, ...]
     next_cursor: int | None = None
 
 

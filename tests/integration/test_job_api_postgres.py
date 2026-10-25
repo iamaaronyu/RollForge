@@ -212,4 +212,73 @@ async def test_database_failure_is_sanitized_and_claim_rolls_back(engine):
         assert response.status_code == 503
         assert response.json()["code"] == "DATABASE_UNAVAILABLE"
         assert "INSERT" not in response.text and tokens["worker"] not in response.text
-        assert (await sdk["user"].get_job(job.job_id)).trial.status == TrialStatus.QUEUED
+        async with engine.connect() as connection:
+            status = await connection.scalar(
+                text("SELECT status FROM trials WHERE job_id = :job_id"),
+                {"job_id": job.job_id},
+            )
+        assert status == TrialStatus.QUEUED
+
+
+async def test_multi_trial_expansion_pagination_and_retry_identity(engine):
+    from datetime import timedelta
+
+    from rollforge_api.execution_service import ExecutionService
+
+    async with clients(engine) as (_, sdk, raw, _ids, tokens):
+        body = job_request().model_copy(update={"trial_count": 3})
+        job = await sdk["user"].create_job(body)
+        assert job.trial_count == 3 and job.terminal_trial_count == 0
+        assert await sdk["user"].create_job(body) == job
+        summary = (await sdk["user"].list_jobs(limit=1)).items[0]
+        assert summary.job_id == job.job_id and summary.trial_count == 3
+        assert summary.terminal_trial_count == 0
+        changed = body.model_copy(update={"trial_count": 2})
+        with pytest.raises(HubError) as error:
+            await sdk["user"].create_job(changed)
+        assert error.value.status_code == 409
+
+        first_page = await sdk["user"].list_trials(job.job_id, limit=2)
+        assert [trial.attempt_index for trial in first_page.items] == [0, 1]
+        assert first_page.next_cursor == 1
+        last_page = await sdk["user"].list_trials(job.job_id, after=first_page.next_cursor)
+        assert [trial.attempt_index for trial in last_page.items] == [2]
+        assert last_page.next_cursor is None
+        assert len({trial.trial_id for trial in first_page.items + last_page.items}) == 3
+
+        headers = {"Authorization": "Bearer " + tokens["other_user"]}
+        assert (
+            await raw.get(f"/api/v1/jobs/{job.job_id}/trials", headers=headers)
+        ).status_code == 404
+
+        leases = [await sdk["worker"].claim() for _ in range(3)]
+        assert [lease.snapshot for lease in leases] == [body.snapshot] * 3
+        assert len({lease.trial_id for lease in leases}) == 3
+        assert (await sdk["worker"].finish(commit(job, leases[0]))).attempt_index == 0
+
+        history = await sdk["user"].list_executions(job.job_id, limit=1)
+        assert history.items[0].attempt_index == 0 and history.next_cursor == 1
+        second = await sdk["user"].list_executions(job.job_id, limit=1, after=history.next_cursor)
+        assert second.items[0].attempt_index == 1 and second.items[0].execution_sequence == 2
+        assert second.next_cursor == 2
+        third = await sdk["user"].list_executions(job.job_id, limit=1, after=second.next_cursor)
+        assert third.items[0].attempt_index == 2 and third.items[0].execution_sequence == 3
+        assert third.next_cursor is None
+
+        async with engine.begin() as connection:
+            await connection.execute(
+                update(Execution)
+                .where(Execution.id == leases[1].execution_id)
+                .values(expires_at=func.clock_timestamp() - timedelta(seconds=1))
+            )
+        assert await ExecutionService(engine).recover_expired() == 1
+        retried = await sdk["worker"].claim()
+        assert retried.trial_id == leases[1].trial_id
+        assert retried.fencing_token == 2
+        after_retry = await sdk["user"].list_executions(job.job_id, limit=2, after=3)
+        assert [(item.attempt_index, item.fencing_token) for item in after_retry.items] == [
+            (1, 2),
+        ]
+        assert after_retry.items[0].execution_sequence == 4
+        refreshed = await sdk["user"].get_job(job.job_id)
+        assert refreshed.trial_count == 3 and refreshed.terminal_trial_count == 1

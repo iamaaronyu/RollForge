@@ -27,6 +27,7 @@ from rollforge_schemas.execution import (
     JobView,
     Lease,
     LeaseIdentity,
+    TrialList,
     TrialView,
 )
 from rollforge_schemas.storage import ExecutionScope
@@ -95,6 +96,7 @@ async def create_job(body: JobCreateRequest, identity: User, _gate: WriteGate, s
             job_id=body.job_id,
             owner_id=identity.subject_id,
             snapshot=body.snapshot,
+            trial_count=body.trial_count,
         )
     )
 
@@ -124,8 +126,32 @@ async def create_approved_job(
     if item is None:
         raise ApiFailure(404, ErrorCode.NOT_FOUND, "任务未配置或未审核")
     return await store.create_job(
-        CreateJob(job_id=body.job_id, owner_id=identity.subject_id, snapshot=item.snapshot)
+        CreateJob(
+            job_id=body.job_id,
+            owner_id=identity.subject_id,
+            snapshot=item.snapshot,
+            trial_count=body.trial_count,
+        )
     )
+
+
+@router.get(
+    "/jobs/{job_id}/trials",
+    response_model=TrialList,
+    tags=["jobs"],
+    operation_id="list_trials",
+)
+async def list_trials(
+    job_id: UUID,
+    identity: User,
+    store: Store,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    after: Annotated[int | None, Query(ge=0, le=999)] = None,
+):
+    result = await store.list_trials(job_id, identity.subject_id, limit, after)
+    if result is None:
+        raise ApiFailure(404, ErrorCode.NOT_FOUND, "Job 不存在")
+    return result
 
 
 @router.get("/jobs", response_model=JobList, tags=["jobs"], operation_id="list_jobs")

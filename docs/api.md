@@ -57,3 +57,5 @@ make check 和 CI 检查实际 API 与导出文件一致，前端 typecheck 检�
 `GET .../trajectory` 返回共享 TrajectoryView（projection_version=1），仅投影已接受执行的固定主轨迹路径。权限及摘要核验与文本预览一致；未知 ATIF 版本、非连续步骤、无效调用引用或超过 1000 步返回 422。不会将解析错误中的原始内容返回客户端。
 
 注册表新增 USER 的版本创建、读取和游标分页接口，写入受现有控制面开关约束；版本不可修改，注册不授予执行权限。详细契约和摘要语义见 [Registry](registry.md)。
+
+JobCreateRequest 与 ApprovedJobCreateRequest 支持 `trial_count`（1–1000，省略默认为 1）。创建事务确定性生成 attempt_index 为 0..N-1 的 Trial；相同 job_id、快照和样本数幂等返回，输入不一致冲突。`GET /api/v1/jobs/{job_id}/trials` 按样本序号分页。Job 级 Execution 游标使用跨样本单调递增的 execution_sequence，响应同时提供 attempt_index 与样本内 fencing_token；因此旧单 Trial 客户端中，历史记录的游标值与 fencing token 相同。

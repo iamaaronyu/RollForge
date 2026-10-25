@@ -21,7 +21,7 @@ Next 变量通过启动环境或 `apps/hub-web/.env.local` 配置，不能假设
 
 ## 查询与限制
 
-`GET /api/v1/jobs?limit=20&after=<UUID>` 返回 JobList，只包含用户自己的 JobSummary 和 TrialView，不返回配置快照。`GET /api/v1/jobs/{job_id}/executions?limit=20&after=<token>` 返回 ExecutionList，按执行 token 递增，不返回 Worker 身份。limit 范围 1–100，游标来自上一页 next_cursor。跨用户历史与不存在的 Job 都返回 404；WORKER 角色不能使用用户查询。
+`GET /api/v1/jobs?limit=20&after=<UUID>` 返回 JobList，只包含用户自己的 JobSummary、首 Trial 与样本数/结束数，不返回配置快照。`GET /api/v1/jobs/{job_id}/trials?limit=20&after=<attempt_index>` 返回确定性样本列表。`GET /api/v1/jobs/{job_id}/executions?limit=20&after=<execution_sequence>` 按 Job 内单调领取序号分页，响应附样本序号及样本内 fencing token，不返回 Worker 身份。limit 范围 1–100，游标来自上一页 next_cursor。跨用户历史与不存在的 Job 都返回 404；WORKER 角色不能使用用户查询。
 
 页面使用 OpenAPI 生成的类型，服务端 fetch 禁用缓存和重定向、设置超时，并用固定中文消息处理异常。浏览器只接收任务标签和展示字段，不接收 USER token、runtime 网关配置或完整快照。刷新链接主动拉取最新状态；尚无轮询、用户登录或取消按钮。
 

@@ -26,6 +26,7 @@ class Credential(Principal):
 class JobCreateRequest(Contract):
     job_id: UUID
     snapshot: ExecutionSnapshot
+    trial_count: int = Field(default=1, ge=1, le=1000, strict=True)
 
 
 class ApprovedTask(Contract):
@@ -44,6 +45,7 @@ class ApprovedTaskList(Contract):
 class ApprovedJobCreateRequest(Contract):
     job_id: UUID
     task_id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,64}$")
+    trial_count: int = Field(default=1, ge=1, le=1000, strict=True)
 
 
 class ArtifactIndex(Contract):

@@ -1,12 +1,12 @@
 # 开发进展与后续计划
 
-更新日期：2026-10-06。依据已提交代码、专项验收记录及后续页面实现；本文汇总当前事实和建议开发顺序，不把实验验收等同于生产开放。
+更新日期：2026-10-26。依据已提交代码、专项验收记录及本轮多 Trial 开发；本文汇总当前事实和建议开发顺序，不把实验验收等同于生产开放。
 
 ## 当前结论
 
 RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → PostgreSQL 执行权 → Worker → 固定 Harbor/E2B → Claude Code → 受限 DeepSeek 会话 → 独立 Verifier → MinIO 原始产物 → Hub 终态。S0 在可信局域网、审核任务、并发 1 范围完成；S1 单 Trial 核心及第六个最小业务页面已实现；页面用合成数据完成真实浏览器/数据库往返，执行侧已有独立真实模型验收。
 
-当前是可复现的实验执行底座。网页已支持受控单任务创建、列表、评分与执行历史，Scheduler 仍为骨架；没有通用 Registry、批量实验、用户登录或生产网关。正式执行入口保持关闭。最新 Worker 记录已独立确认 Linux 临时网络策略恢复、原配置未改变且临时规则为 0。
+当前是可复现的实验执行底座。网页已支持受控任务创建、列表、评分与执行历史；Job 可创建 1–1000 个确定性 Trial 并分页查看，Worker 仍按单 Trial 领取，持续调度仍为后续工作。Registry 资产版本已实现，但还未解析为可运行快照。正式执行入口保持关闭。Linux 主机现通过 Tailscale 地址 `100.106.244.122` 访问；本轮检查确认 Ubuntu 22.04、6.8 内核、KVM 和 E2B 服务可用。多 Trial 的真实 Harbor/E2B/模型链尚未复验。
 
 ## 已完成的开发项
 
@@ -29,6 +29,7 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 | Worker | 单次领取、续租、任务归档校验、凭证白名单、独立 Runtime、上传与 pending-commit、resume | 真实 HTTP 主链通过；修复 venv 解释器解析和 Mac 系统代理问题 |
 | 真实 Worker 故障验收 | reward 1.0、0.0、提交响应丢失后恢复、协作式取消清理、同 Trial 新 Execution Retry、旧提交 409 | Sandbox/Firecracker 均为 0；协作取消不代表 Worker/Runtime SIGKILL 或掉电清理已通过 |
 | 前端业务页 | 中文任务创建/列表/详情、服务端审核目录、Execution 历史与生成类型 | 合成数据浏览器验收通过；已有基础产物和主轨迹 Viewer；仍无登录、轮询 |
+| 多 Trial Job | `trial_count` 1–1000、快照确定性展开、样本分页、Job 汇总计数及 Job 级 Execution 游标；页面可创建并展示样本 | 真实 PostgreSQL 创建、幂等、分页、领取、完成及 Retry 身份验收通过；迁移旧数据和拒绝破坏性降级通过；本轮全量 `make check` 172 passed、`make runtime-check` 9 passed。多样本真实 Harbor/E2B/模型验收仍待完成，不标记为完整主链通过 |
 
 真实主链提交记录为 `make check` 140 项全部通过、无跳过，`make runtime-check` 9 项通过。该数字是有相应环境时的历史验收证据；普通检查未提供数据库/MinIO 时会跳过专项，不能据此声称再次通过真实集成。
 
@@ -90,7 +91,7 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 
 按这一路线，下一批最有价值的交付是“用户能在受控网页创建并查看单任务执行”。通用资产与持续调度随后推进，实验比较、Failure Mining、训练导出、高级 Pause/Resume/Fork 和 RL 后置。工期按每个切片验收后再估算，当前测试主机容量与网关生产条件不能作为已具备的前提。
 
-本批页面及查询验收见 [页面记录](validation/2026-10-06-s1-web.md)；后续按 [逐步实施计划](next-implementation.md) 推进。
+本批页面及查询验收见 [页面记录](validation/2026-10-06-s1-web.md)；多 Trial 交付边界见 [多 Trial 验收记录](validation/2026-10-26-multitrial.md)。后续按 [逐步实施计划](next-implementation.md) 推进。
 
 第二批已实现受控产物索引及 1 MiB 文本预览，真实 PostgreSQL/MinIO 权限、越界、篡改与预览边界通过；详见 [基础 Viewer 验收](validation/2026-10-06-viewer.md)。第三批主轨迹版本化投影与中文时间线已实现，159 项全量测试通过；详见 [时间线验收](validation/2026-10-06-trajectory.md)。多模态/子轨迹展开、搜索与聚合仍待开发。
 

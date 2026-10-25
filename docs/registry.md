@@ -28,4 +28,4 @@ limit 为 1–100，after 为非负版本游标；next_cursor 为 null 时结束
 
 按现有 Alembic 流程 upgrade head。downgrade 0001_execution 会移除注册表及其数据，保留 Job/Trial/Execution；运行环境回退前必须先备份注册数据。真实专用数据库已验证回退、重新升级与元数据一致性，不自动迁移远端长期运行数据库。
 
-下一切片：设计多 Trial Job 的冻结输入与确定性展开契约，迁移单 Trial 限制，同步查询、执行快照解析与 Worker 领取语义。Attempt 表示独立样本，Retry 仍只产生新 Execution；不能把重复执行当作新增样本。此项涉及执行主链，启用前必须追加真实 Harbor/E2B/模型验收。
+后续执行主链仍需把 Registry revision 引用安全解析为现有运行绑定，并通过真实 Harbor/E2B/模型验收。当前多 Trial 创建沿用一个 Job 级 ExecutionSnapshot，不会隐式把 Registry spec 摘要塞入运行绑定。Job 的 Trial 数最多 1000；Attempt 表示独立样本，Retry 仍只产生新 Execution；不能把重复执行当作新增样本。迁移会阻止在多 Trial Job 存在时回退至单 Trial schema，以免丢弃样本数据。

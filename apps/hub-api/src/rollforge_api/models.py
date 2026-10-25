@@ -23,16 +23,22 @@ document = JSON().with_variant(JSONB(), "postgresql")
 
 class Job(Base):
     __tablename__ = "jobs"
+    __table_args__ = (
+        CheckConstraint("trial_count BETWEEN 1 AND 1000", name="ck_jobs_trial_count"),
+        CheckConstraint("execution_sequence >= 0", name="ck_jobs_execution_sequence"),
+    )
     id: Mapped[UUID] = mapped_column(primary_key=True)
     owner_id: Mapped[UUID] = mapped_column(index=True)
     snapshot: Mapped[dict] = mapped_column(document)
+    trial_count: Mapped[int] = mapped_column(default=1)
+    execution_sequence: Mapped[int] = mapped_column(default=0)
 
 
 class Trial(Base):
     __tablename__ = "trials"
     __table_args__ = (
-        UniqueConstraint("job_id", name="uq_trials_single_job"),
-        CheckConstraint("attempt_index = 0", name="ck_trials_attempt"),
+        UniqueConstraint("job_id", "attempt_index", name="uq_trials_job_attempt"),
+        CheckConstraint("attempt_index >= 0", name="ck_trials_attempt"),
         CheckConstraint("fencing_token >= 0", name="ck_trials_token"),
         Index("ix_trials_queue", "status", "id"),
     )
@@ -48,11 +54,15 @@ class Trial(Base):
 class Execution(Base):
     __tablename__ = "executions"
     __table_args__ = (
+        UniqueConstraint("job_id", "job_sequence", name="uq_execution_job_sequence"),
+        CheckConstraint("job_sequence >= 1", name="ck_execution_job_sequence"),
         UniqueConstraint("trial_id", "fencing_token", name="uq_execution_token"),
         CheckConstraint("fencing_token > 0", name="ck_execution_token"),
         Index("ix_execution_expiry", "status", "expires_at"),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True)
+    job_id: Mapped[UUID] = mapped_column(ForeignKey("jobs.id"))
+    job_sequence: Mapped[int]
     trial_id: Mapped[UUID] = mapped_column(ForeignKey("trials.id"))
     worker_id: Mapped[UUID]
     fencing_token: Mapped[int]

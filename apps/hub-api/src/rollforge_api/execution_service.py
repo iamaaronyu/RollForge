@@ -2,7 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 from rollforge_schemas.domain import TrialStatus
 from rollforge_schemas.execution import (
@@ -17,6 +17,7 @@ from rollforge_schemas.execution import (
     Lease,
     LeaseIdentity,
     ResultCommit,
+    TrialList,
     TrialView,
     validate_execution_transition,
 )
@@ -70,52 +71,116 @@ class ExecutionService:
             # 唯一键竞争由 PostgreSQL 处理；重复请求等待首次创建事务提交。
             created = await session.scalar(
                 insert(Job)
-                .values(id=request.job_id, owner_id=request.owner_id, snapshot=payload)
+                .values(
+                    id=request.job_id,
+                    owner_id=request.owner_id,
+                    snapshot=payload,
+                    trial_count=request.trial_count,
+                )
                 .on_conflict_do_nothing(index_elements=[Job.id])
                 .returning(Job.id)
             )
             job = await session.get(Job, request.job_id)
             saved = ExecutionSnapshot.model_validate(job.snapshot).model_dump(mode="json")
-            if job.owner_id != request.owner_id or saved != payload:
+            if (
+                job.owner_id != request.owner_id
+                or saved != payload
+                or job.trial_count != request.trial_count
+            ):
                 raise SubmissionConflict("Job identity already has different inputs")
             if created:
-                trial = Trial(
-                    id=uuid4(),
-                    job_id=job.id,
-                    status=TrialStatus.PENDING,
-                    attempt_index=0,
-                    fencing_token=0,
-                )
-                self.trial_state(trial, TrialStatus.QUEUED)
-                session.add(trial)
+                trials = []
+                for attempt_index in range(request.trial_count):
+                    trial = Trial(
+                        id=uuid5(job.id, f"trial:{attempt_index}"),
+                        job_id=job.id,
+                        status=TrialStatus.PENDING,
+                        attempt_index=attempt_index,
+                        fencing_token=0,
+                    )
+                    self.trial_state(trial, TrialStatus.QUEUED)
+                    trials.append(trial)
+                session.add_all(trials)
                 await session.flush()
-            await session.scalar(select(Trial).where(Trial.job_id == job.id).with_for_update())
+            rows = list(
+                await session.scalars(
+                    select(Trial)
+                    .where(Trial.job_id == job.id)
+                    .order_by(Trial.attempt_index)
+                    .with_for_update()
+                )
+            )
+            if len(rows) != job.trial_count or [row.attempt_index for row in rows] != list(
+                range(job.trial_count)
+            ):
+                raise SubmissionConflict("Job sample expansion is incomplete")
             return await self.view(session, job)
 
     async def view(self, session: AsyncSession, job: Job) -> JobView:
-        trial = await session.scalar(select(Trial).where(Trial.job_id == job.id))
-        result = None
-        if trial.fencing_token:
-            execution = await session.scalar(
-                select(Execution).where(
-                    Execution.trial_id == trial.id,
-                    Execution.fencing_token == trial.fencing_token,
-                )
+        trial_rows = list(
+            await session.scalars(
+                select(Trial).where(Trial.job_id == job.id).order_by(Trial.attempt_index)
             )
-            if execution and execution.result:
-                result = ResultCommit.model_validate(execution.result)
+        )
+        trial_views = await self.trial_views(session, trial_rows)
+        terminal_count = sum(
+            view.status in {TrialStatus.COMPLETED, TrialStatus.FAILED, TrialStatus.CANCELLED}
+            for view in trial_views
+        )
         return JobView(
             job_id=job.id,
             owner_id=job.owner_id,
             snapshot=ExecutionSnapshot.model_validate(job.snapshot),
-            trial=TrialView(
-                trial_id=trial.id,
-                job_id=job.id,
-                status=trial.status,
-                fencing_token=trial.fencing_token,
-                result=result,
-            ),
+            trial=trial_views[0],
+            trial_count=job.trial_count,
+            terminal_trial_count=terminal_count,
         )
+
+    async def trial_views(self, session: AsyncSession, trials: list[Trial]) -> list[TrialView]:
+        if not trials:
+            return []
+        current = (
+            await session.execute(
+                select(Trial, Execution.result)
+                .outerjoin(
+                    Execution,
+                    (Execution.trial_id == Trial.id)
+                    & (Execution.fencing_token == Trial.fencing_token),
+                )
+                .where(Trial.id.in_([trial.id for trial in trials]))
+                .order_by(Trial.attempt_index)
+            )
+        ).all()
+        return [
+            TrialView(
+                trial_id=trial.id,
+                job_id=trial.job_id,
+                status=trial.status,
+                attempt_index=trial.attempt_index,
+                fencing_token=trial.fencing_token,
+                result=ResultCommit.model_validate(result) if result else None,
+            )
+            for trial, result in current
+        ]
+
+    async def list_trials(
+        self, job_id: UUID, owner_id: UUID, limit: int = 20, after: int | None = None
+    ):
+        async with self.sessions() as session:
+            job = await session.scalar(
+                select(Job).where(Job.id == job_id, Job.owner_id == owner_id)
+            )
+            if job is None:
+                return None
+            query = select(Trial).where(Trial.job_id == job_id)
+            if after is not None:
+                query = query.where(Trial.attempt_index > after)
+            rows = list(await session.scalars(query.order_by(Trial.attempt_index).limit(limit + 1)))
+            views = await self.trial_views(session, rows[:limit])
+            return TrialList(
+                items=tuple(views),
+                next_cursor=rows[limit - 1].attempt_index if len(rows) > limit else None,
+            )
 
     async def get_job(self, job_id: UUID, owner_id: UUID) -> JobView | None:
         async with self.sessions.begin() as session:
@@ -125,13 +190,35 @@ class ExecutionService:
             # 与完成/回收相同的锁次序，防止跨两次 SELECT 读取不一致状态。
             if job is None:
                 return None
-            await session.scalar(select(Trial).where(Trial.job_id == job_id).with_for_update())
+            await session.scalars(
+                select(Trial)
+                .where(Trial.job_id == job_id)
+                .order_by(Trial.attempt_index)
+                .with_for_update()
+            )
             return await self.view(session, job)
 
     async def list_jobs(self, owner_id: UUID, limit: int = 20, after: UUID | None = None):
+        trial_count = (
+            select(func.count(Trial.id))
+            .where(Trial.job_id == Job.id)
+            .correlate(Job)
+            .scalar_subquery()
+        )
+        terminal_count = (
+            select(func.count(Trial.id))
+            .where(
+                Trial.job_id == Job.id,
+                Trial.status.in_(
+                    [TrialStatus.COMPLETED, TrialStatus.FAILED, TrialStatus.CANCELLED]
+                ),
+            )
+            .correlate(Job)
+            .scalar_subquery()
+        )
         query = (
-            select(Job.id, Trial, Execution.result)
-            .join(Trial, Trial.job_id == Job.id)
+            select(Job.id, Trial, trial_count, terminal_count, Execution.result)
+            .join(Trial, (Trial.job_id == Job.id) & (Trial.attempt_index == 0))
             .outerjoin(
                 Execution,
                 (Execution.trial_id == Trial.id) & (Execution.fencing_token == Trial.fencing_token),
@@ -148,15 +235,18 @@ class ExecutionService:
             items=tuple(
                 JobSummary(
                     job_id=job_id,
+                    trial_count=total,
+                    terminal_trial_count=terminal,
                     trial=TrialView(
                         job_id=job_id,
                         trial_id=trial.id,
                         status=trial.status,
+                        attempt_index=trial.attempt_index,
                         fencing_token=trial.fencing_token,
                         result=ResultCommit.model_validate(result) if result else None,
                     ),
                 )
-                for job_id, trial, result in rows[:limit]
+                for job_id, trial, total, terminal, result in rows[:limit]
             ),
             next_cursor=rows[limit - 1][0] if len(rows) > limit else None,
         )
@@ -169,26 +259,30 @@ class ExecutionService:
             if exists is None:
                 return None
             rows = (
-                await session.scalars(
-                    select(Execution)
+                await session.execute(
+                    select(Execution, Trial.attempt_index)
                     .join(Trial, Execution.trial_id == Trial.id)
-                    .where(Trial.job_id == job_id, Execution.fencing_token > after)
-                    .order_by(Execution.fencing_token)
+                    .where(Trial.job_id == job_id, Execution.job_sequence > after)
+                    .order_by(Execution.job_sequence)
                     .limit(limit + 1)
                 )
             ).all()
             return ExecutionList(
                 items=tuple(
                     ExecutionView(
-                        execution_id=row.id,
-                        fencing_token=row.fencing_token,
-                        status=row.status,
-                        expires_at=row.expires_at,
-                        result=ResultCommit.model_validate(row.result) if row.result else None,
+                        execution_id=execution.id,
+                        execution_sequence=execution.job_sequence,
+                        attempt_index=attempt_index,
+                        fencing_token=execution.fencing_token,
+                        status=execution.status,
+                        expires_at=execution.expires_at,
+                        result=ResultCommit.model_validate(execution.result)
+                        if execution.result
+                        else None,
                     )
-                    for row in rows[:limit]
+                    for execution, attempt_index in rows[:limit]
                 ),
-                next_cursor=rows[limit - 1].fencing_token if len(rows) > limit else None,
+                next_cursor=rows[limit - 1][0].job_sequence if len(rows) > limit else None,
             )
 
     async def accepted_execution(self, job_id: UUID, execution_id: UUID, owner_id: UUID):
@@ -226,18 +320,23 @@ class ExecutionService:
             if runnable_only:
                 query = query.join(Job).where(Job.snapshot["runtime"].as_string().is_not(None))
             trial = await session.scalar(
-                query.order_by(Trial.id).with_for_update(of=Trial, skip_locked=True).limit(1)
+                query.order_by(Trial.job_id, Trial.attempt_index)
+                .with_for_update(of=Trial, skip_locked=True)
+                .limit(1)
             )
             if trial is None:
                 return None
-            job = await session.get(Job, trial.job_id)
+            job = await session.scalar(select(Job).where(Job.id == trial.job_id).with_for_update())
             snapshot = ExecutionSnapshot.model_validate(job.snapshot)
             if trial.fencing_token >= snapshot.max_executions:
                 raise LeaseRejected("Execution budget exhausted")
             trial.fencing_token += 1
             self.trial_state(trial, TrialStatus.RUNNING)
+            job.execution_sequence += 1
             execution = Execution(
                 id=uuid4(),
+                job_id=job.id,
+                job_sequence=job.execution_sequence,
                 trial_id=trial.id,
                 worker_id=worker_id,
                 fencing_token=trial.fencing_token,
@@ -352,6 +451,7 @@ class ExecutionService:
                 trial_id=trial.id,
                 job_id=trial.job_id,
                 status=trial.status,
+                attempt_index=trial.attempt_index,
                 fencing_token=trial.fencing_token,
                 result=result,
             )

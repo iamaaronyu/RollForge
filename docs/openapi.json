@@ -56,6 +56,13 @@
             "pattern": "^[a-zA-Z0-9_-]{1,64}$",
             "title": "Task Id",
             "type": "string"
+          },
+          "trial_count": {
+            "default": 1,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Trial Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -302,10 +309,22 @@
       "ExecutionView": {
         "additionalProperties": false,
         "properties": {
+          "attempt_index": {
+            "default": 0,
+            "exclusiveMaximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Attempt Index",
+            "type": "integer"
+          },
           "execution_id": {
             "format": "uuid",
             "title": "Execution Id",
             "type": "string"
+          },
+          "execution_sequence": {
+            "minimum": 1.0,
+            "title": "Execution Sequence",
+            "type": "integer"
           },
           "expires_at": {
             "format": "date-time",
@@ -333,6 +352,7 @@
         },
         "required": [
           "execution_id",
+          "execution_sequence",
           "fencing_token",
           "status",
           "expires_at"
@@ -400,6 +420,13 @@
           },
           "snapshot": {
             "$ref": "#/components/schemas/ExecutionSnapshot"
+          },
+          "trial_count": {
+            "default": 1,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Trial Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -446,13 +473,27 @@
             "title": "Job Id",
             "type": "string"
           },
+          "terminal_trial_count": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Terminal Trial Count",
+            "type": "integer"
+          },
           "trial": {
             "$ref": "#/components/schemas/TrialView"
+          },
+          "trial_count": {
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Trial Count",
+            "type": "integer"
           }
         },
         "required": [
           "job_id",
-          "trial"
+          "trial",
+          "trial_count",
+          "terminal_trial_count"
         ],
         "title": "JobSummary",
         "type": "object"
@@ -473,15 +514,29 @@
           "snapshot": {
             "$ref": "#/components/schemas/ExecutionSnapshot"
           },
+          "terminal_trial_count": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Terminal Trial Count",
+            "type": "integer"
+          },
           "trial": {
             "$ref": "#/components/schemas/TrialView"
+          },
+          "trial_count": {
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Trial Count",
+            "type": "integer"
           }
         },
         "required": [
           "job_id",
           "owner_id",
           "snapshot",
-          "trial"
+          "trial",
+          "trial_count",
+          "terminal_trial_count"
         ],
         "title": "JobView",
         "type": "object"
@@ -1067,6 +1122,34 @@
         "title": "TrajectoryView",
         "type": "object"
       },
+      "TrialList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TrialView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "TrialList",
+        "type": "object"
+      },
       "TrialStatus": {
         "enum": [
           "PENDING",
@@ -1083,8 +1166,9 @@
         "additionalProperties": false,
         "properties": {
           "attempt_index": {
-            "const": 0,
             "default": 0,
+            "exclusiveMaximum": 1000.0,
+            "minimum": 0.0,
             "title": "Attempt Index",
             "type": "integer"
           },
@@ -2056,6 +2140,134 @@
         "summary": "Trajectory View",
         "tags": [
           "artifacts"
+        ]
+      }
+    },
+    "/api/v1/jobs/{job_id}/trials": {
+      "get": {
+        "operationId": "list_trials",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 999,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrialList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Trials",
+        "tags": [
+          "jobs"
         ]
       }
     },

@@ -124,6 +124,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/jobs/{job_id}/trials": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Trials */
+        readonly get: operations["list_trials"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/platform": {
         readonly parameters: {
             readonly query?: never;
@@ -333,6 +350,11 @@ export interface components {
             readonly job_id: string;
             /** Task Id */
             readonly task_id: string;
+            /**
+             * Trial Count
+             * @default 1
+             */
+            readonly trial_count: number;
         };
         /** ApprovedTask */
         readonly ApprovedTask: {
@@ -422,10 +444,17 @@ export interface components {
         /** ExecutionView */
         readonly ExecutionView: {
             /**
+             * Attempt Index
+             * @default 0
+             */
+            readonly attempt_index: number;
+            /**
              * Execution Id
              * Format: uuid
              */
             readonly execution_id: string;
+            /** Execution Sequence */
+            readonly execution_sequence: number;
             /**
              * Expires At
              * Format: date-time
@@ -463,6 +492,11 @@ export interface components {
              */
             readonly job_id: string;
             readonly snapshot: components["schemas"]["ExecutionSnapshot"];
+            /**
+             * Trial Count
+             * @default 1
+             */
+            readonly trial_count: number;
         };
         /** JobList */
         readonly JobList: {
@@ -478,7 +512,11 @@ export interface components {
              * Format: uuid
              */
             readonly job_id: string;
+            /** Terminal Trial Count */
+            readonly terminal_trial_count: number;
             readonly trial: components["schemas"]["TrialView"];
+            /** Trial Count */
+            readonly trial_count: number;
         };
         /** JobView */
         readonly JobView: {
@@ -493,7 +531,11 @@ export interface components {
              */
             readonly owner_id: string;
             readonly snapshot: components["schemas"]["ExecutionSnapshot"];
+            /** Terminal Trial Count */
+            readonly terminal_trial_count: number;
             readonly trial: components["schemas"]["TrialView"];
+            /** Trial Count */
+            readonly trial_count: number;
         };
         /** Lease */
         readonly Lease: {
@@ -751,6 +793,13 @@ export interface components {
             /** Steps */
             readonly steps: readonly components["schemas"]["TimelineStep"][];
         };
+        /** TrialList */
+        readonly TrialList: {
+            /** Items */
+            readonly items: readonly components["schemas"]["TrialView"][];
+            /** Next Cursor */
+            readonly next_cursor?: number | null;
+        };
         /**
          * TrialStatus
          * @enum {string}
@@ -761,9 +810,8 @@ export interface components {
             /**
              * Attempt Index
              * @default 0
-             * @constant
              */
-            readonly attempt_index: 0;
+            readonly attempt_index: number;
             /** Fencing Token */
             readonly fencing_token: number;
             /**
@@ -1369,6 +1417,85 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["TrajectoryView"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    readonly list_trials: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+                readonly after?: number | null;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly job_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TrialList"];
                 };
             };
             /** @description Unauthorized */
