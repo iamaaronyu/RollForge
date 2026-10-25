@@ -17,7 +17,12 @@ from rollforge_schemas.api import (
 )
 from rollforge_schemas.domain import HealthResponse
 from rollforge_schemas.execution import ExecutionList, JobList, JobView, Lease, TrialList, TrialView
-from rollforge_schemas.registry import AssetRevision, RevisionCreate, RevisionList
+from rollforge_schemas.registry import (
+    AssetRevision,
+    RegistryAssetList,
+    RevisionCreate,
+    RevisionList,
+)
 
 Model = TypeVar("Model", bound=BaseModel)
 
@@ -157,6 +162,17 @@ class HubClient:
                 params={"limit": limit, "after": after},
             ),
             RevisionList,
+        )
+
+    async def list_registry_assets(
+        self, *, limit: int = 50, after: UUID | None = None
+    ) -> RegistryAssetList:
+        params = {"limit": limit}
+        if after is not None:
+            params["after"] = after
+        return self._decode(
+            await self._request("GET", "/api/v1/registry/assets", params=params),
+            RegistryAssetList,
         )
 
     async def claim(self, body: ClaimRequest | None = None) -> Lease | None:

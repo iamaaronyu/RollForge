@@ -34,3 +34,9 @@ dt { color: #a1b2a5; } dd { margin: 0; overflow-wrap: anywhere; }
 nav { margin-top: 20px; } .panel .note { margin-top: 16px; font-size: 14px; }
 @media(max-width: 600px) { main { padding: 24px 16px; } .panel { padding: 18px; } dl { grid-template-columns: 1fr; } }
 .artifact-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.7; max-height: 650px; overflow: auto; }
+.page-nav { display: flex; gap: 22px; margin: 8px 0 24px; }
+.registry-form { display: grid; grid-template-columns: minmax(150px, 220px) minmax(220px, 1fr); align-items: center; }
+.registry-form input { min-width: 0; font: inherit; color: #ecf4ed; background: #17231c; padding: 12px 16px; border: 1px solid #526957; border-radius: 8px; }
+.registry-form button { grid-column: 2; justify-self: start; }
+.success { color: #b5e69b; }
+@media(max-width: 600px) { .registry-form { grid-template-columns: 1fr; } .registry-form button { grid-column: 1; } }

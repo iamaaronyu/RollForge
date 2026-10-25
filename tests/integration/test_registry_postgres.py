@@ -57,6 +57,16 @@ async def test_registry_competing_identical_and_changed_writes(engine):
         assert page.next_cursor == 1 and page.items == (first,)
         last = await sdk["user"].list_revisions(body.asset_id, after=page.next_cursor)
         assert last.next_cursor is None and last.items[0].revision == 2
+        second_asset = task()
+        await sdk["user"].create_revision(second_asset)
+        assets = await sdk["user"].list_registry_assets(limit=1)
+        assert len(assets.items) == 1 and assets.next_cursor is not None
+        next_assets = await sdk["user"].list_registry_assets(limit=1, after=assets.next_cursor)
+        assert len(next_assets.items) == 1 and next_assets.next_cursor is None
+        summaries = {item.asset_id: item for item in (*assets.items, *next_assets.items)}
+        assert summaries[body.asset_id].kind == "TASK"
+        assert summaries[body.asset_id].latest_revision == 2
+        assert summaries[second_asset.asset_id].latest_revision == 1
 
 
 async def test_registry_owner_roles_kind_and_empty_gap_rollback(engine):
@@ -73,6 +83,12 @@ async def test_registry_owner_roles_kind_and_empty_gap_rollback(engine):
             with pytest.raises(HubError) as error:
                 await sdk[name].list_revisions(body.asset_id)
             assert error.value.status_code == expected
+            if name == "other_user":
+                assert (await sdk[name].list_registry_assets()).items == ()
+            else:
+                with pytest.raises(HubError) as error:
+                    await sdk[name].list_registry_assets()
+                assert error.value.status_code == expected
         with pytest.raises(HubError) as error:
             await sdk["user"].create_revision(
                 RevisionCreate(asset_id=body.asset_id, revision=2, spec=AgentSpec())

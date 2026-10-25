@@ -19,6 +19,7 @@ export default async function Jobs({ searchParams }: { searchParams: Promise<{ a
   const enabled = experimental() && writes && Boolean(tasks?.items.length);
   return <main>
     <header><Link href="/">RollForge</Link><span>单任务实验</span></header>
+    <nav className="page-nav"><Link href="/jobs">任务与执行</Link><Link href="/registry">资产版本</Link></nav>
     <h1>任务与执行</h1><p className="intro">查看自己的任务、评分和每次执行记录。</p>
     <section className="panel"><h2>创建任务</h2>
       <p className="note">只使用服务端已审核任务。可展开 1–1000 个独立样本；正式执行入口尚未开放，任务由 Worker 领取。</p>

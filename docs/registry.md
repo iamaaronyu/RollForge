@@ -18,16 +18,17 @@ TaskSpec 仅包含对象存储 archive_key 和 archive_digest；AgentSpec 固定
 
 | 接口 | 用途 |
 |---|---|
+| GET /api/v1/registry/assets | 查询当前用户拥有的资产摘要，按资产 UUID 游标分页 |
 | POST /api/v1/registry/revisions | 提交 RevisionCreate，返回 AssetRevision |
 | GET /api/v1/registry/assets/{asset_id}/revisions/{revision} | 读取固定版本 |
 | GET /api/v1/registry/assets/{asset_id}/revisions?limit=20&after=0 | 按版本递增分页 |
 | POST /api/v1/jobs/from-revisions | 依据三个用户私有版本和部署审核目录创建 Job |
 | POST /api/v1/jobs | 仅创建无运行绑定的元数据 Job；直接提交 runtime 返回 403 |
 
-limit 为 1–100，after 为非负版本游标；next_cursor 为 null 时结束。SDK 提供 create_revision、get_revision、list_revisions、create_job_from_revisions。Job 请求最多展开 1000 个 Trial，Retry 不增加样本数。OpenAPI 与前端生成类型已更新；尚无 Registry 管理/发现网页、Dataset 版本或资产审核工作流。
+limit 为 1–100，版本列表 after 为非负版本游标，资产列表 after 为资产 UUID；next_cursor 为 null 时结束。SDK 提供 list_registry_assets、create_revision、get_revision、list_revisions、create_job_from_revisions。`/registry` 网页支持登记 Task/Agent/Model revision，查看资产和最近 100 个版本，并从选定版本创建最多 1000 个 Trial 的 Job。Task 归档必须先由运维部署到审核存储路径；Registry 网页不上传归档。Retry 不增加样本数。OpenAPI 与前端生成类型已更新；Dataset 版本和独立资产审核工作流仍未实现。
 
 ## 迁移与接续
 
 按现有 Alembic 流程 upgrade head。downgrade 0001_execution 会移除注册表及其数据，保留 Job/Trial/Execution；运行环境回退前必须先备份注册数据。真实专用数据库已验证回退、重新升级与元数据一致性，不自动迁移远端长期运行数据库。
 
-Registry revision 已可安全解析为现有运行绑定，但仍需真实多 Trial Harbor/E2B/模型验收。Job 冻结一个 RegistrySelection 和一个 Job 级 ExecutionSnapshot；Registry spec digest 与 Worker 的实际运行摘要分开保存。Job 的 Trial 数最多 1000；Attempt 表示独立样本，Retry 仍只产生新 Execution；不能把重复执行当作新增样本。迁移会阻止在多 Trial Job 存在时回退至单 Trial schema，以免丢弃样本数据。
+Registry revision 已可安全解析为现有运行绑定，但仍需真实多 Trial Harbor/E2B/模型验收。Job 冻结一个 RegistrySelection 和一个 Job 级 ExecutionSnapshot；Registry spec digest 与 Worker 的实际运行摘要分开保存。Job 的 Trial 数最多 1000；Attempt 表示独立样本，Retry 仍只产生新 Execution；不能把重复执行当作新增样本。迁移会阻止在多 Trial Job 存在时回退至单 Trial schema，以免丢弃样本数据。网页使用单一服务端 USER token，不提供用户登录；Run 开关关闭时仍不能通过网页启动执行。

@@ -175,6 +175,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/registry/assets": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Registry Assets */
+        readonly get: operations["list_registry_assets"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/registry/assets/{asset_id}/revisions": {
         readonly parameters: {
             readonly query?: never;
@@ -658,6 +675,28 @@ export interface components {
         readonly RecoveryResult: {
             /** Recovered Count */
             readonly recovered_count: number;
+        };
+        /** RegistryAssetList */
+        readonly RegistryAssetList: {
+            /** Items */
+            readonly items: readonly components["schemas"]["RegistryAssetSummary"][];
+            /** Next Cursor */
+            readonly next_cursor?: string | null;
+        };
+        /** RegistryAssetSummary */
+        readonly RegistryAssetSummary: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            readonly asset_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            readonly kind: "TASK" | "AGENT" | "MODEL";
+            /** Latest Revision */
+            readonly latest_revision: number;
         };
         /** RegistryJobCreateRequest */
         readonly RegistryJobCreateRequest: {
@@ -1729,6 +1768,83 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": unknown;
+                };
+            };
+        };
+    };
+    readonly list_registry_assets: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+                readonly after?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RegistryAssetList"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
                 };
             };
         };

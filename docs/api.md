@@ -9,6 +9,9 @@
 | `GET /docs` | 交互式 API 文档 |
 | `POST /api/v1/jobs` | USER 创建 Job 并按 `trial_count` 展开 1–1000 个 Trial；相同输入幂等 |
 | `POST /api/v1/jobs/from-revisions` | USER 按 Task/Agent/Model Registry 引用创建 Job；必须匹配部署审核目录 |
+| `GET /api/v1/registry/assets` | USER 查询自己的资产摘要，按 UUID 游标分页 |
+| `GET /api/v1/registry/assets/{asset_id}/revisions` | USER 查询资产的不可变版本 |
+| `POST /api/v1/registry/revisions` | USER 登记新资产版本；由控制面写开关限制 |
 | `GET /api/v1/jobs/{job_id}` | USER 查询自己的 Job；不存在或其他用户的 Job 返回 404 |
 | `POST /api/v1/worker/leases/claim` | WORKER 领取租约；无可领取 Trial 返回 204 |
 | `POST /api/v1/worker/leases/renew` | WORKER 续租；校验身份、执行 ID、token 和有效期 |
@@ -58,7 +61,7 @@ make check 和 CI 检查实际 API 与导出文件一致，前端 typecheck 检�
 
 `GET .../trajectory` 返回共享 TrajectoryView（projection_version=1），仅投影已接受执行的固定主轨迹路径。权限及摘要核验与文本预览一致；未知 ATIF 版本、非连续步骤、无效调用引用或超过 1000 步返回 422。不会将解析错误中的原始内容返回客户端。
 
-注册表新增 USER 的版本创建、读取和游标分页接口，写入受现有控制面开关约束；版本不可修改，注册不授予执行权限。详细契约和摘要语义见 [Registry](registry.md)。
+注册表提供 USER 的资产列表、版本创建/读取/分页接口，写入受现有控制面开关约束；版本不可修改，注册不授予执行权限。网页入口见 `/registry`，详细契约和摘要语义见 [Registry](registry.md)。
 
 JobCreateRequest 与 ApprovedJobCreateRequest 支持 `trial_count`（1–1000，省略默认为 1）。创建事务确定性生成 attempt_index 为 0..N-1 的 Trial；相同 job_id、快照和样本数幂等返回，输入不一致冲突。`GET /api/v1/jobs/{job_id}/trials` 按样本序号分页。Job 级 Execution 游标使用跨样本单调递增的 execution_sequence，响应同时提供 attempt_index 与样本内 fencing_token；因此旧单 Trial 客户端中，历史记录的游标值与 fencing token 相同。
 

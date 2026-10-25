@@ -11,6 +11,8 @@ from rollforge_schemas.registry import (
     AgentSpec,
     AssetRevision,
     ModelSpec,
+    RegistryAssetList,
+    RegistryAssetSummary,
     RevisionCreate,
     RevisionList,
     TaskSpec,
@@ -129,6 +131,30 @@ class Registry:
             return RevisionList(
                 items=tuple(self.view(row) for row in rows[:limit]),
                 next_cursor=rows[limit - 1].revision if len(rows) > limit else None,
+            )
+
+    async def list_assets(self, owner_id, limit, after):
+        async with self.sessions() as session:
+            statement = (
+                select(RegistryAsset.id, RegistryAsset.kind, func.max(RegistryRevision.revision))
+                .join(RegistryRevision, RegistryRevision.asset_id == RegistryAsset.id)
+                .where(RegistryAsset.owner_id == owner_id)
+            )
+            if after is not None:
+                statement = statement.where(RegistryAsset.id > after)
+            rows = list(
+                await session.execute(
+                    statement.group_by(RegistryAsset.id, RegistryAsset.kind)
+                    .order_by(RegistryAsset.id)
+                    .limit(limit + 1)
+                )
+            )
+            return RegistryAssetList(
+                items=tuple(
+                    RegistryAssetSummary(asset_id=row[0], kind=row[1], latest_revision=row[2])
+                    for row in rows[:limit]
+                ),
+                next_cursor=rows[limit - 1][0] if len(rows) > limit else None,
             )
 
 
@@ -255,3 +281,19 @@ async def list_revisions(
     return await Registry(request.app.state.engine).list(
         identity.subject_id, asset_id, limit, after
     )
+
+
+@router.get(
+    "/registry/assets",
+    response_model=RegistryAssetList,
+    tags=["registry"],
+    operation_id="list_registry_assets",
+)
+async def list_registry_assets(
+    identity: User,
+    store: Store,
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    after: UUID | None = None,
+):
+    return await Registry(request.app.state.engine).list_assets(identity.subject_id, limit, after)

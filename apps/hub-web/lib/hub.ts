@@ -8,6 +8,9 @@ export type TrialList = components["schemas"]["TrialList"];
 export type TrajectoryView = components["schemas"]["TrajectoryView"];
 export type ArtifactIndex = components["schemas"]["ArtifactIndex"];
 export type TaskList = components["schemas"]["ApprovedTaskList"];
+export type RegistryAssetList = components["schemas"]["RegistryAssetList"];
+export type AssetRevision = components["schemas"]["AssetRevision"];
+export type RevisionList = components["schemas"]["RevisionList"];
 export class HubProblem extends Error {
   constructor(public readonly status: number) {
     super(status === 401 || status === 403 ? "服务端访问配置未就绪。" :

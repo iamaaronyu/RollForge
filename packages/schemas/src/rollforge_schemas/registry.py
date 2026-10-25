@@ -50,6 +50,17 @@ class RevisionList(Contract):
     next_cursor: int | None = None
 
 
+class RegistryAssetSummary(Contract):
+    asset_id: UUID
+    kind: AssetKind
+    latest_revision: int
+
+
+class RegistryAssetList(Contract):
+    items: tuple[RegistryAssetSummary, ...]
+    next_cursor: UUID | None = None
+
+
 def revision_digest(spec: TaskSpec | AgentSpec | ModelSpec) -> str:
     """注册配置摘要与任务 archive 摘要、运行绑定摘要分别保存。"""
     return digest_bytes(canonical_bytes(spec.model_dump(mode="json")))
