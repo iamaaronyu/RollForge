@@ -6,7 +6,7 @@
 
 RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → PostgreSQL 执行权 → Worker → 固定 Harbor/E2B → Claude Code → 受限 DeepSeek 会话 → 独立 Verifier → MinIO 原始产物 → Hub 终态。S0 在可信局域网、审核任务、并发 1 范围完成；S1 单 Trial 核心及第六个最小业务页面已实现；页面用合成数据完成真实浏览器/数据库往返，执行侧已有独立真实模型验收。
 
-当前是可复现的实验执行底座。网页已支持受控任务创建、列表、评分、执行历史，以及 Registry 资产登记、版本浏览和基于私有 revision 的 Job 创建；Run 仍只能匹配部署者审核目录。Job 可创建 1–1000 个确定性 Trial 并分页查看。单进程有界持续调度、FIFO 队列和租约恢复已实现；真实多 Worker Harbor/E2B 链尚未复验。Registry API/UI 和网关预算改动已由真实 PostgreSQL、类型检查和生产构建验证；本轮完整 `make check` 为 171 passed、16 skipped、1 项弃用警告。跳过项包含当前未提供的固定 MinIO 测试二进制和历史 Harbor 轨迹样本。正式执行入口保持关闭。Linux 主机现通过 Tailscale 地址 `100.106.244.122` 访问；本轮检查确认 Ubuntu 22.04、6.8 内核、KVM 和 E2B 服务可用。
+当前是可复现的实验执行底座。网页已支持受控任务创建、列表、评分、执行历史，以及 Registry 资产登记、版本浏览和基于私有 revision 的 Job 创建；Run 仍只能匹配部署者审核目录。Job 可创建 1–1000 个确定性 Trial 并分页查看。单进程有界持续调度、FIFO 队列和租约恢复已实现；真实多 Worker Harbor/E2B 链尚未复验。Registry API/UI、网关预算和多 Trial 验收工具已由真实 PostgreSQL、专项测试、类型检查和生产构建验证；本轮完整 `make check` 为 173 passed、16 skipped、1 项弃用警告。跳过项包含当前未提供的固定 MinIO 测试二进制和历史 Harbor 轨迹样本。正式执行入口保持关闭。Linux 主机现通过 Tailscale 地址 `100.106.244.122` 访问；本轮检查确认 Ubuntu 22.04、6.8 内核、KVM 和 E2B 服务可用。
 
 ## 已完成的开发项
 
@@ -33,9 +33,9 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 | 持续调度 | 有界常驻 Worker、空队列轮询、失败退避、优雅停机、FIFO 队列和租约自动回收 | PostgreSQL FIFO、双领取竞争、回收 API 与迁移通过；真实双 Worker Harbor/E2B、进程重启、全局容量限制仍待验收 |
 | Registry 运行绑定与网页 | 用户可登记不可变 Task/Agent/Model 版本、浏览资产及最近 100 个 revision，并基于版本提交 Job；Hub 校验所有权、digest 和部署审核目录；直传可运行快照被拒绝 | 真实 PostgreSQL 的分页、所有权、摘要、审核不匹配及拒绝绕过用例通过；Next 类型检查和生产构建通过。真实多 Trial Harbor/E2B/模型验收仍待完成；网页仍是单用户静态 USER token 模式 |
 
-近期切片验收：调度器 `make check` 181 passed、2 skipped，`make runtime-check` 9 passed；Registry 绑定 `make check` 184 passed、2 skipped；Registry 页面及资产发现最新 `make check` 170 passed、16 skipped、1 项 Starlette/httpx 弃用警告。最新检查中的 16 项跳过包括未提供固定 MinIO 测试二进制及历史 Harbor 轨迹样本；真实 PostgreSQL 迁移与 API 测试均运行通过。以往专用 MinIO 验收仍保留在对应历史记录中，不把跳过计作此次 MinIO 通过。
+近期切片验收：调度器 `make check` 181 passed、2 skipped，`make runtime-check` 9 passed；Registry 绑定 `make check` 184 passed、2 skipped；Registry 页面 170 passed、16 skipped；加入多 Trial 验收工具后的最新 `make check` 173 passed、16 skipped、1 项 Starlette/httpx 弃用警告。最新检查中的 16 项跳过包括未提供固定 MinIO 测试二进制及历史 Harbor 轨迹样本；真实 PostgreSQL 迁移与 API 测试均运行通过。以往专用 MinIO 验收仍保留在对应历史记录中，不把跳过计作此次 MinIO 通过。
 
-证据入口：[S0 隔离与恢复](validation/2026-10-06-isolation-recovery.md)、[数据库](validation/2026-10-06-s1-postgres.md)、[API/SDK](validation/2026-10-06-s1-api.md)、[对象存储与联合恢复](validation/2026-10-06-s1-storage.md)、[真实 Worker](validation/2026-10-06-s1-worker.md)、[多 Trial](validation/2026-10-26-multitrial.md)、[FIFO 调度](validation/2026-10-26-scheduler.md)、[Registry 运行绑定](validation/2026-10-26-registry-binding.md)、[Registry 页面](validation/2026-10-26-registry-ui.md)、[网关持久预算](validation/2026-10-26-gateway-budget.md)。早期验收文档保留当时尚未实现的历史边界；当前结论以上述最新记录和代码为准。
+证据入口：[S0 隔离与恢复](validation/2026-10-06-isolation-recovery.md)、[数据库](validation/2026-10-06-s1-postgres.md)、[API/SDK](validation/2026-10-06-s1-api.md)、[对象存储与联合恢复](validation/2026-10-06-s1-storage.md)、[真实 Worker](validation/2026-10-06-s1-worker.md)、[多 Trial 数据模型](validation/2026-10-26-multitrial.md)、[真实多 Trial 验收入口](validation/2026-10-26-multitrial-runner.md)、[FIFO 调度](validation/2026-10-26-scheduler.md)、[Registry 运行绑定](validation/2026-10-26-registry-binding.md)、[Registry 页面](validation/2026-10-26-registry-ui.md)、[网关持久预算](validation/2026-10-26-gateway-budget.md)。早期验收文档保留当时尚未实现的历史边界；当前结论以上述最新记录和代码为准。
 
 ## 建议的后续开发顺序
 
@@ -91,7 +91,7 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 
 每个切片顺序：明确不变量与验收 → 共享契约/迁移 → 服务与鉴权 → OpenAPI/消费者 → 真实数据库/存储验证 → 涉及主链则真实 Harbor/E2B/模型验收 → make check 与必要的 runtime-check → 凭证及公开适宜性审查 → 独立正常 commit/push → 更新证据。
 
-Registry API 与版本发现/绑定页面已完成。下一项交付是 Linux 上的真实多 Trial、双 Worker Harbor/E2B 运行与恢复验收，随后处理正式开放所需的网关、用户/Worker 权限、容量和运维条件。执行验收前需要配置有效的 Hub/Worker/S3 凭证与短期 DeepSeek 受限会话；在此期间继续完成不依赖真实 Sandbox 的恢复和运维能力。实验比较、Failure Mining、训练导出、高级 Pause/Resume/Fork 和 RL 后置。工期按每个切片验收后再估算，当前测试主机容量与网关生产条件不能作为已具备的前提。
+Registry API 与版本发现/绑定页面已完成，真实 2-Trial 验收脚本已补齐并默认禁止执行。下一项交付是 Linux 上并发 1 的真实多 Trial Harbor/E2B 运行与恢复验收；双 Worker/并发 2 需资源充足的主机。执行验收前需要配置有效的 Hub/Worker/S3 凭证与短期 DeepSeek 受限会话；本机目前仅有 `.env.spike` 的直接上游/E2B 参数，缺 Hub/Worker/S3 与受限会话配置。在此期间继续完成不依赖真实 Sandbox 的恢复和运维能力。实验比较、Failure Mining、训练导出、高级 Pause/Resume/Fork 和 RL 后置。工期按每个切片验收后再估算，当前测试主机容量与网关生产条件不能作为已具备的前提。
 
 本批页面及查询验收见 [页面记录](validation/2026-10-06-s1-web.md)、[Registry 页面记录](validation/2026-10-26-registry-ui.md)；多 Trial 交付边界见 [多 Trial 验收记录](validation/2026-10-26-multitrial.md)。后续按 [逐步实施计划](next-implementation.md) 推进。
 
