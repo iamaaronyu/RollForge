@@ -3,9 +3,9 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-rollforge}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rollforge}
-      POSTGRES_DB: ${POSTGRES_DB:-rollforge}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set in a protected infra env file}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in a protected infra env file}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set in a protected infra env file}
     ports: ["127.0.0.1:${ROLLFORGE_POSTGRES_HOST_PORT:-55432}:5432"]
     volumes: ["postgres-data:/var/lib/postgresql/data"]
     healthcheck:
@@ -20,8 +20,8 @@ services:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     command: server /data --console-address :9001
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-rollforge}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-rollforge-local-only}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set in a protected infra env file}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set in a protected infra env file}
     ports:
       - "127.0.0.1:${ROLLFORGE_MINIO_HOST_PORT:-59000}:9000"
       - "127.0.0.1:${ROLLFORGE_MINIO_CONSOLE_HOST_PORT:-59001}:9001"

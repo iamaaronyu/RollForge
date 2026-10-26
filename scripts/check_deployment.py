@@ -3,18 +3,78 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 import socket
 import stat
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 from uuid import UUID
 
 
 class PreflightError(Exception):
     pass
+
+
+E2B_DEFAULT_HOST_PORTS = {5432, 6379, 9000, 9001}
+
+
+def validate_infrastructure_environment(path: Path) -> dict[str, str]:
+    values = read_env(path, private_mode=True)
+    allowed = {
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD",
+        "POSTGRES_DB",
+        "MINIO_ROOT_USER",
+        "MINIO_ROOT_PASSWORD",
+        "ROLLFORGE_POSTGRES_HOST_PORT",
+        "ROLLFORGE_REDIS_HOST_PORT",
+        "ROLLFORGE_MINIO_HOST_PORT",
+        "ROLLFORGE_MINIO_CONSOLE_HOST_PORT",
+    }
+    reject_unknown(values, allowed, path)
+    require(
+        values,
+        (
+            "POSTGRES_USER",
+            "POSTGRES_PASSWORD",
+            "POSTGRES_DB",
+            "MINIO_ROOT_USER",
+            "MINIO_ROOT_PASSWORD",
+        ),
+        path,
+    )
+    for key in ("POSTGRES_PASSWORD", "MINIO_ROOT_PASSWORD"):
+        secret = values[key].lower()
+        if (
+            len(values[key]) < 24
+            or secret in {"rollforge", "rollforge-local-only"}
+            or secret.startswith(("replace-with-", "change-me", "your-"))
+        ):
+            raise PreflightError(f"{path} 中 {key} 必须使用独立随机强凭证")
+    if values["POSTGRES_PASSWORD"] == values["MINIO_ROOT_PASSWORD"]:
+        raise PreflightError("PostgreSQL 与 MinIO 必须使用不同凭证")
+    ports = []
+    for name, default in (
+        ("ROLLFORGE_POSTGRES_HOST_PORT", 55432),
+        ("ROLLFORGE_REDIS_HOST_PORT", 56379),
+        ("ROLLFORGE_MINIO_HOST_PORT", 59000),
+        ("ROLLFORGE_MINIO_CONSOLE_HOST_PORT", 59001),
+    ):
+        try:
+            port = int(values.get(name, str(default)))
+        except ValueError:
+            raise PreflightError(f"{path} 中 {name} 必须是有效端口") from None
+        if not 1024 <= port <= 65535:
+            raise PreflightError(f"{path} 中 {name} 必须在 1024–65535 范围内")
+        if port in E2B_DEFAULT_HOST_PORTS:
+            raise PreflightError(f"{path} 中 {name} 不得占用 E2B 默认端口 {port}")
+        ports.append(port)
+    if len(ports) != len(set(ports)):
+        raise PreflightError(f"{path} 中 RollForge 服务主机端口不能重复")
+    return values
 
 
 def reject_runtime_credentials(values: dict[str, str], path: Path):
@@ -133,6 +193,51 @@ def validate_object_endpoint(values: dict[str, str], path: Path):
         raise PreflightError(f"{path} 的对象存储必须使用 HTTPS，或显式允许 loopback HTTP")
 
 
+def validate_local_service_targets(infrastructure: dict[str, str], hub: dict[str, str], path: Path):
+    ports = {
+        "postgres": int(infrastructure.get("ROLLFORGE_POSTGRES_HOST_PORT", "55432")),
+        "redis": int(infrastructure.get("ROLLFORGE_REDIS_HOST_PORT", "56379")),
+        "minio": int(infrastructure.get("ROLLFORGE_MINIO_HOST_PORT", "59000")),
+    }
+
+    def local_url(value: str, name: str):
+        try:
+            parsed = urlsplit(value)
+            port = parsed.port
+        except ValueError:
+            raise PreflightError(f"{path} 的 {name} 地址无效") from None
+        if parsed.hostname not in {"localhost", "127.0.0.1", "::1", "[::1]"}:
+            raise PreflightError(f"{path} 的 {name} 必须连接 RollForge 本机独立服务")
+        return parsed, port
+
+    try:
+        database = urlsplit(hub["ROLLFORGE_DATABASE_URL"])
+        database_port = database.port
+    except ValueError:
+        raise PreflightError(f"{path} 的数据库地址无效") from None
+    expected_database = unquote(database.path.removeprefix("/"))
+    if (
+        not database.scheme.startswith("postgresql")
+        or database.hostname not in {"localhost", "127.0.0.1", "::1", "[::1]"}
+        or database_port != ports["postgres"]
+        or expected_database != infrastructure["POSTGRES_DB"]
+        or unquote(database.username or "") != infrastructure["POSTGRES_USER"]
+        or unquote(database.password or "") != infrastructure["POSTGRES_PASSWORD"]
+    ):
+        raise PreflightError(
+            f"{path} 的数据库必须指向独立 PostgreSQL 端口 {ports['postgres']} 和配置的数据库"
+        )
+
+    if hub.get("ROLLFORGE_REDIS_URL"):
+        redis, redis_port = local_url(hub["ROLLFORGE_REDIS_URL"], "Redis")
+        if redis.scheme != "redis" or redis_port != ports["redis"]:
+            raise PreflightError(f"{path} 的 Redis 必须指向独立 Redis 端口 {ports['redis']}")
+
+    storage, storage_port = local_url(hub["ROLLFORGE_OBJECT_STORAGE_ENDPOINT"], "对象存储")
+    if storage.scheme != "http" or storage_port != ports["minio"]:
+        raise PreflightError(f"{path} 的对象存储必须指向独立 MinIO 端口 {ports['minio']}")
+
+
 def credentials(config: str) -> list[dict[str, str]]:
     try:
         data = json.loads(config)
@@ -172,7 +277,14 @@ def compose_config(repo: Path, env_file: Path) -> dict:
         "json",
     ]
     try:
-        result = subprocess.run(command, check=False, capture_output=True, text=True, cwd=repo)
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=repo,
+            env=compose_process_environment(),
+        )
     except OSError:
         raise PreflightError("需要已安装且可运行的 Docker Compose v2") from None
     if result.returncode:
@@ -181,6 +293,25 @@ def compose_config(repo: Path, env_file: Path) -> dict:
         return json.loads(result.stdout)
     except json.JSONDecodeError:
         raise PreflightError("Docker Compose 未返回有效配置") from None
+
+
+def compose_process_environment() -> dict[str, str]:
+    # Compose gives inherited shell variables precedence over --env-file. Force
+    # the protected file to be the sole source for infrastructure settings.
+    environment = os.environ.copy()
+    for name in (
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD",
+        "POSTGRES_DB",
+        "MINIO_ROOT_USER",
+        "MINIO_ROOT_PASSWORD",
+        "ROLLFORGE_POSTGRES_HOST_PORT",
+        "ROLLFORGE_REDIS_HOST_PORT",
+        "ROLLFORGE_MINIO_HOST_PORT",
+        "ROLLFORGE_MINIO_CONSOLE_HOST_PORT",
+    ):
+        environment.pop(name, None)
+    return environment
 
 
 def check_port_available(host: str, port: int) -> bool:
@@ -215,10 +346,16 @@ def validate_compose_config(config: dict, port_probe=check_port_available, web_p
     services = config.get("services", {})
     volumes = config.get("volumes", {})
     bound_ports: set[int] = set()
+    expected_targets = {
+        "postgres": {"5432"},
+        "redis": {"6379"},
+        "minio": {"9000", "9001"},
+    }
     for service_name in ("postgres", "redis", "minio"):
         service = services.get(service_name)
         if not service:
             raise PreflightError(f"Compose 缺少服务：{service_name}")
+        targets = set()
         for port in service.get("ports", []):
             host_ip = port.get("host_ip")
             published = port.get("published")
@@ -228,11 +365,19 @@ def validate_compose_config(config: dict, port_probe=check_port_available, web_p
                 raise PreflightError(f"{service_name} 的主机端口无效") from None
             if host_ip != "127.0.0.1":
                 raise PreflightError(f"{service_name} 必须只绑定 127.0.0.1")
+            target = str(port.get("target", ""))
+            if target not in expected_targets[service_name] or port.get("protocol", "tcp") != "tcp":
+                raise PreflightError(f"{service_name} 容器服务端口不符合隔离配置")
+            targets.add(target)
             if not 1024 <= host_port <= 65535 or host_port in bound_ports:
                 raise PreflightError(f"Compose 主机端口无效或重复：{host_port}")
+            if host_port in E2B_DEFAULT_HOST_PORTS:
+                raise PreflightError(f"Compose 不得占用 E2B 默认端口：{host_port}")
             if not port_probe(host_ip, host_port):
                 raise PreflightError(f"Compose 主机端口已被占用：{host_port}")
             bound_ports.add(host_port)
+        if targets != expected_targets[service_name]:
+            raise PreflightError(f"{service_name} Compose 端口映射不完整或包含额外端口")
 
     service_ports = (8000, web_port)
     if len(set(service_ports)) != len(service_ports):
@@ -301,40 +446,7 @@ def validate_environment(
     runtime_path: Path | None,
     node_check=check_node_runtime,
 ):
-    infrastructure = read_env(compose_path, private_mode=True)
-    infra_allowed = {
-        "POSTGRES_USER",
-        "POSTGRES_PASSWORD",
-        "POSTGRES_DB",
-        "MINIO_ROOT_USER",
-        "MINIO_ROOT_PASSWORD",
-        "ROLLFORGE_POSTGRES_HOST_PORT",
-        "ROLLFORGE_REDIS_HOST_PORT",
-        "ROLLFORGE_MINIO_HOST_PORT",
-        "ROLLFORGE_MINIO_CONSOLE_HOST_PORT",
-    }
-    reject_unknown(infrastructure, infra_allowed, compose_path)
-    require(
-        infrastructure,
-        (
-            "POSTGRES_USER",
-            "POSTGRES_PASSWORD",
-            "POSTGRES_DB",
-            "MINIO_ROOT_USER",
-            "MINIO_ROOT_PASSWORD",
-        ),
-        compose_path,
-    )
-    for key in ("POSTGRES_PASSWORD", "MINIO_ROOT_PASSWORD"):
-        weak_value = infrastructure[key].lower()
-        if (
-            len(infrastructure[key]) < 24
-            or weak_value in {"rollforge", "rollforge-local-only"}
-            or weak_value.startswith(("replace-with-", "change-me", "your-"))
-        ):
-            raise PreflightError(f"{compose_path} 中 {key} 必须使用独立随机强凭证")
-    if infrastructure["POSTGRES_PASSWORD"] == infrastructure["MINIO_ROOT_PASSWORD"]:
-        raise PreflightError("PostgreSQL 与 MinIO 必须使用不同凭证")
+    infrastructure = validate_infrastructure_environment(compose_path)
 
     hub = read_env(hub_path, private_mode=False)
     reject_unknown(
@@ -369,6 +481,7 @@ def validate_environment(
         hub_path,
     )
     validate_object_endpoint(hub, hub_path)
+    validate_local_service_targets(infrastructure, hub, hub_path)
     if hub.get("ROLLFORGE_ENVIRONMENT") != "production":
         raise PreflightError("Hub 必须设置 ROLLFORGE_ENVIRONMENT=production")
     if hub.get("ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED", "false").lower() != "false":

@@ -7,7 +7,7 @@
 - `rollforge-hub.service` 只监听 `127.0.0.1:8000`。`rollforge-web.service` 只监听 loopback，端口由受保护的 `web.env` 配置，仅适合本机或 SSH 隧道访问；当前 Web 使用单一服务端 USER Token，没有多用户登录，不得接公网反向代理。
 - `rollforge-scheduler.service` 以并发 1 运行，适合目前 8 GiB 的实验主机。增加并发或第二个 Scheduler 前，先做容量与 Harbor/E2B 竞争验收。
 - PostgreSQL 是任务和租约的权威状态源；Redis 只用于通知/缓存。对象存储需由 Hub 与 Worker 共同访问。
-- RollForge Compose 使用 loopback 主机端口 55432、56379、59000、59001，分别映射 PostgreSQL、Redis、MinIO API 和 Console；端口可通过 `ROLLFORGE_*_HOST_PORT` 覆盖。先用预检确认空闲。不要复用 E2B 的容器、数据库卷或默认监听端口。
+- RollForge Compose 使用 loopback 主机端口 55432、56379、59000、59001，分别映射 PostgreSQL、Redis、MinIO API 和 Console；端口可通过 `ROLLFORGE_*_HOST_PORT` 覆盖。预检会拒绝 E2B 常用的 5432、6379、9000、9001，以及实际已占用的任何配置端口，并校验容器内目标端口和命名卷。不要复用 E2B 的容器、数据库卷或默认监听端口。
 - Worker Runtime 会话单独放在 `/var/lib/rollforge/private/runtime.env`，不能把 Hub token、对象存储密钥或上游 `ANTHROPIC_API_KEY` 放入其中。
 
 systemd 模板的基础验证见 [Linux systemd 部署模板验证](validation/2026-10-26-linux-deployment.md)；本次独立端口、Web unit 与部署预检器验证见 [部署预检记录](validation/2026-10-26-deployment-preflight.md)。
@@ -43,7 +43,7 @@ Next.js 生产服务要求系统级 Node.js 20.9 或更新版本，路径为 `/u
 
 ## 独立数据服务与部署预检
 
-在 `/etc/rollforge/infra.env` 创建 0600 文件。PostgreSQL 与 MinIO 口令必须是不同的随机值，不能沿用 `.env.example` 的开发口令。Compose 默认使用非 E2B 端口；如需覆盖，确保仍绑定 loopback 且端口空闲：
+在 `/etc/rollforge/infra.env` 创建 0600 文件。PostgreSQL 与 MinIO 口令必须是不同的随机值，不能沿用 `.env.example` 的开发口令。Compose 不提供数据库或 MinIO 的口令默认值；`make infra` 不再读取仓库 `.env`，必须显式传入 `ROLLFORGE_INFRA_ENV`。启动器会检查文件权限、强凭证、隔离端口、容器端口映射、端口冲突和持久卷，并清除 shell 同名变量，确保只使用该受保护文件：
 
 ```dotenv
 POSTGRES_USER=rollforge
@@ -57,7 +57,7 @@ ROLLFORGE_MINIO_HOST_PORT=59000
 ROLLFORGE_MINIO_CONSOLE_HOST_PORT=59001
 ```
 
-在填好受保护的 `hub.env`、`worker.env` 后，先运行只读预检。它检查配置文件权限、强制关闭首次部署写入和执行开关、校验 USER/WORKER Token 摘要匹配、Compose loopback 绑定、端口冲突和 PostgreSQL/MinIO 命名卷；若提供 `web.env`，也校验 Node.js、loopback Hub 地址和 USER Token 归属。预检错误不打印配置值：
+在填好受保护的 `hub.env`、`worker.env` 后，再运行完整只读预检。它检查配置文件权限、强制关闭首次部署写入和执行开关、校验 USER/WORKER Token 摘要匹配、Hub 数据库与对象存储地址确实匹配本部署的 loopback 独立端口、Compose loopback 绑定、端口冲突和 PostgreSQL/MinIO 命名卷；若提供 `web.env`，也校验 Node.js、loopback Hub 地址和 USER Token 归属。预检错误不打印配置值：
 
 ```sh
 sudo /opt/rollforge/.venv/bin/python /opt/rollforge/scripts/check_deployment.py \
@@ -67,12 +67,10 @@ sudo /opt/rollforge/.venv/bin/python /opt/rollforge/scripts/check_deployment.py 
   --web-env /etc/rollforge/web.env
 ```
 
-预检须在第一次启动 RollForge 数据服务和 Hub/Web 前运行；它通过尝试绑定 loopback 端口检查当前冲突，不会启动容器或服务，也不证明依赖健康。通过后启动独立 Compose 项目并等待健康检查：
+预检须在第一次启动 RollForge 数据服务和 Hub/Web 前运行；它通过尝试绑定 loopback 端口检查当前冲突，不会启动容器或服务，也不证明依赖健康。完整预检通过后，启动器会再次检查独立服务配置并启动 Compose 项目；随后用 `docker compose ps` 核对容器状态：
 
 ```sh
-sudo docker compose --project-name rollforge \
-  --env-file /etc/rollforge/infra.env \
-  --file /opt/rollforge/infra/docker-compose/compose.yaml up -d
+sudo env ROLLFORGE_INFRA_ENV=/etc/rollforge/infra.env make -C /opt/rollforge infra
 sudo docker compose --project-name rollforge \
   --env-file /etc/rollforge/infra.env \
   --file /opt/rollforge/infra/docker-compose/compose.yaml ps
@@ -82,7 +80,7 @@ PostgreSQL 与 MinIO 数据保存在独立命名卷 `rollforge_postgres-data` �
 
 在 `/etc/rollforge/hub.env` 和 `/etc/rollforge/worker.env` 创建本机专用配置，权限设为 `root:rollforge 0640`。不要通过命令行参数、shell history、工单或聊天传递 token。环境文件格式为 `KEY=value`；值中不要使用 shell 展开语法。
 
-Hub 至少需要：`ROLLFORGE_ENVIRONMENT=production`、`ROLLFORGE_DATABASE_URL`、`ROLLFORGE_API_CREDENTIALS` 和对象存储 endpoint/bucket/access key/secret key。USER 与 WORKER 使用不同随机 Token；API credentials 只保存其 SHA256 摘要，原始 Token 由对应客户端保管。Hub 与 Worker 使用相同对象存储 endpoint/bucket、不同最小权限访问密钥。若 MinIO 仅在同一主机 loopback 提供 HTTP，Hub 和 Worker 均须显式设置 `ROLLFORGE_OBJECT_STORAGE_ALLOW_LOCAL_HTTP=true`；不得用该开关接受 LAN HTTP。先保持 `ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED=false`。
+Hub 至少需要：`ROLLFORGE_ENVIRONMENT=production`、`ROLLFORGE_DATABASE_URL`、`ROLLFORGE_API_CREDENTIALS` 和对象存储 endpoint/bucket/access key/secret key。单机部署的数据库 URL 必须指向 `127.0.0.1:<ROLLFORGE_POSTGRES_HOST_PORT>/<POSTGRES_DB>`，MinIO endpoint 必须是 `http://127.0.0.1:<ROLLFORGE_MINIO_HOST_PORT>`。如配置 Redis，也必须指向 `127.0.0.1:<ROLLFORGE_REDIS_HOST_PORT>`。完整预检会核对这些地址与 Compose 端口，防止误连 E2B 或其他服务。USER 与 WORKER 使用不同随机 Token；API credentials 只保存其 SHA256 摘要，原始 Token 由对应客户端保管。Hub 与 Worker 使用相同对象存储 endpoint/bucket、不同最小权限访问密钥。若 MinIO 仅在同一主机 loopback 提供 HTTP，Hub 和 Worker 均须显式设置 `ROLLFORGE_OBJECT_STORAGE_ALLOW_LOCAL_HTTP=true`；不得用该开关接受 LAN HTTP。先保持 `ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED=false`。
 
 Worker 配置至少需要：`ROLLFORGE_WORKER_HUB_URL`、`ROLLFORGE_WORKER_HUB_TOKEN`、`ROLLFORGE_WORKER_RUNTIME_PYTHON=/opt/rollforge/integration/harbor-runtime/.venv/bin/python`、`ROLLFORGE_WORKER_RUNTIME_ENV_FILE=/var/lib/rollforge/private/runtime.env`、经过验收的 `ROLLFORGE_WORKER_GATEWAY_URL`、与 Hub 相同的对象存储 endpoint/bucket、独立对象存储 access key/secret key，以及 spool 路径 `/var/lib/rollforge/spool`。网关地址默认要求 HTTPS；仅可信 LAN 验收允许显式设置 `ROLLFORGE_WORKER_ALLOW_LAN_HTTP=true`。先设置 `ROLLFORGE_WORKER_RUNS_ENABLED=false`、`ROLLFORGE_SCHEDULER_ENABLED=false`、`ROLLFORGE_SCHEDULER_CONCURRENCY=1`。
 
@@ -158,6 +156,8 @@ sudo journalctl -u rollforge-hub.service -u rollforge-scheduler.service --since 
 正式开门前逐项留存可复核证据：数据库迁移和真实租约事务测试；对象存储 Hub/Worker 权限分离、上传/读取/摘要校验和重启后读回；USER/WORKER Token 鉴权、轮换与凭证扫描；受限网关真实模型调用、无效/过期会话拒绝及预算账本重启保留；`native-ready.json`、`pending-commit.json` 的进程/主机恢复、租约回收与备份读回。任一项未通过，三个开关继续为 false。当前目标节点尚未进行这些真实服务验收。
 
 ## 升级与恢复
+
+PostgreSQL、对象桶与网关请求预算的停写备份、隔离恢复步骤和恢复边界见 [跨组件备份与恢复手册](backup-recovery.md)。该工具只恢复到空 DB/隔离 bucket；不原地覆盖，也不改变正式执行开关。
 
 升级前停止 Scheduler 以停止领取并等待当前执行优雅退出，然后停止 Hub；保存数据库备份并记录当前代码版本。部署新代码和锁文件后运行 `make check`、`make runtime-check`、数据库迁移检查，再启动 Hub，最后启动 Scheduler。不要在活动执行期间覆盖 Runtime 或任务目录。
 

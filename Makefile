@@ -23,7 +23,8 @@ api:
 web:
 	npm --prefix apps/hub-web run dev
 infra:
-	docker compose --env-file .env -f infra/docker-compose/compose.yaml up -d
+	@test -n "$$ROLLFORGE_INFRA_ENV" || (echo "请设置 ROLLFORGE_INFRA_ENV 指向权限为 0600 的独立 infra.env；禁止使用开发 .env"; exit 2)
+	uv run python scripts/start_infrastructure.py --env-file "$$ROLLFORGE_INFRA_ENV"
 worker-check:
 	uv run python -m rollforge_worker --check
 scheduler-check:

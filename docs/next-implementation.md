@@ -10,7 +10,7 @@
 | 3 | 受控产物与轨迹 Viewer | 所有权、对象作用域、摘要与大小检查，失败定位 | 基础索引/文本、主轨迹时间线及浏览器内文本搜索已实现；大文件下载、多模态/子轨迹与聚合待开发 |
 | 4 | 不可变 Revision Registry 与批量展开 | 版本冻结、幂等展开、Retry 不增加样本数 | API、SDK、资产发现分页及中文 Registry 页已实现；最新版本可选创建审核范围内 Job；真实 PostgreSQL 所有权/摘要/拒绝与分页测试通过。新增真实多 Trial 验收入口；仍待具备运行凭证后完成 Harbor/E2B/模型运行，见 [验收入口说明](multitrial-acceptance.md)、[绑定验收](validation/2026-10-26-registry-binding.md) 与 [页面验收](validation/2026-10-26-registry-ui.md) |
 | 5 | 持续 Worker 与容量调度 | 真双 Worker、背压、重启恢复、有界回收 | 有界常驻 Worker、FIFO 入队、退避、优雅停机与鉴权租约回收已实现；18 项真实 PostgreSQL 执行/API 测试通过；双 Worker Harbor/E2B、进程重启和全局容量验收待完成，见 [验收记录](validation/2026-10-26-scheduler.md) |
-| 6 | 部署与故障演练 | SIGKILL/掉电、限流、备份读回、监控与升级恢复 | 新增独立数据服务可配置 loopback 端口、Web systemd unit 与安全部署预检；尚未在目标机安装（需要管理员操作及私密配置）。真实 Sandbox 取消清理、备份读回和监控仍待完成 |
+| 6 | 部署与故障演练 | SIGKILL/掉电、限流、备份读回、监控与升级恢复 | 新增独立服务端口、loopback Web/Hub、强凭证与隔离预检、安全数据服务启动器及跨组件备份/恢复工具；SQLite 真账本备份、单调合并与 bundle 摘要测试通过。真实 PostgreSQL/MinIO 临时恢复读回尚未验证（本机 Docker daemon 不可用），目标机部署仍需管理员操作；真实 Sandbox 取消清理、监控待完成。正式写入/执行开关保持关闭 |
 | 并行前置 | 网关与权限加固 | TLS/部署认证、token 级费用预算、用户登录、Worker/对象权限 | 请求次数已由 SQLite 持久化原子扣减；其余正式开放前完成 |
 
 每一切片先共享契约与权限，再实现 API/生成类型/页面；相关不变量用真实 PostgreSQL/MinIO 验证。修改执行链时补真实 Harbor/E2B/模型证据。提交前 make check；Runtime 改动追加 runtime-check。按文件独立提交，不混入其他 Agent 的改动。

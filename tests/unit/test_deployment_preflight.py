@@ -7,8 +7,10 @@ import pytest
 
 from scripts.check_deployment import (
     PreflightError,
+    compose_process_environment,
     validate_compose_config,
     validate_environment,
+    validate_infrastructure_environment,
 )
 
 
@@ -73,7 +75,7 @@ def deployment_files(tmp_path: Path):
         tmp_path / "hub.env",
         {
             "ROLLFORGE_ENVIRONMENT": "production",
-            "ROLLFORGE_DATABASE_URL": "postgresql+asyncpg://rollforge:secret@127.0.0.1:55432/rollforge",
+            "ROLLFORGE_DATABASE_URL": "postgresql+asyncpg://rollforge:postgres-random-secret-at-least-24-chars@127.0.0.1:55432/rollforge",
             "ROLLFORGE_API_CREDENTIALS": api_credentials,
             "ROLLFORGE_OBJECT_STORAGE_ENDPOINT": "http://127.0.0.1:59000",
             "ROLLFORGE_OBJECT_STORAGE_BUCKET": "rollforge",
@@ -118,16 +120,16 @@ def compose_config():
     return {
         "services": {
             "postgres": {
-                "ports": [{"host_ip": "127.0.0.1", "published": "55432"}],
+                "ports": [{"host_ip": "127.0.0.1", "published": "55432", "target": "5432"}],
                 "volumes": [
                     {"type": "volume", "source": "pg-data", "target": "/var/lib/postgresql/data"}
                 ],
             },
-            "redis": {"ports": [{"host_ip": "127.0.0.1", "published": "56379"}]},
+            "redis": {"ports": [{"host_ip": "127.0.0.1", "published": "56379", "target": "6379"}]},
             "minio": {
                 "ports": [
-                    {"host_ip": "127.0.0.1", "published": "59000"},
-                    {"host_ip": "127.0.0.1", "published": "59001"},
+                    {"host_ip": "127.0.0.1", "published": "59000", "target": "9000"},
+                    {"host_ip": "127.0.0.1", "published": "59001", "target": "9001"},
                 ],
                 "volumes": [{"type": "volume", "source": "minio-data", "target": "/data"}],
             },
@@ -160,6 +162,43 @@ def test_preflight_rejects_configured_web_port_conflict():
         validate_compose_config(compose_config(), port_probe=lambda *_: True, web_port=59001)
 
 
+def test_preflight_rejects_e2b_default_port_even_when_available():
+    config = compose_config()
+    config["services"]["postgres"]["ports"][0]["published"] = "5432"
+    with pytest.raises(PreflightError, match="E2B 默认端口"):
+        validate_compose_config(config, port_probe=lambda *_: True)
+
+
+def test_preflight_rejects_wrong_internal_container_port():
+    config = compose_config()
+    config["services"]["redis"]["ports"][0]["target"] = "5432"
+    with pytest.raises(PreflightError, match="容器服务端口"):
+        validate_compose_config(config, port_probe=lambda *_: True)
+
+
+def test_infrastructure_requires_private_strong_distinct_credentials(tmp_path):
+    env_file = write_env(
+        tmp_path / "infra.env",
+        {
+            "POSTGRES_USER": "rollforge",
+            "POSTGRES_PASSWORD": "rollforge",
+            "POSTGRES_DB": "rollforge",
+            "MINIO_ROOT_USER": "storage",
+            "MINIO_ROOT_PASSWORD": "rollforge-local-only",
+        },
+    )
+    with pytest.raises(PreflightError, match="随机强凭证"):
+        validate_infrastructure_environment(env_file)
+
+
+def test_compose_environment_does_not_inherit_shell_secrets(monkeypatch):
+    monkeypatch.setenv("POSTGRES_PASSWORD", "wrong-shell-secret")
+    monkeypatch.setenv("ROLLFORGE_MINIO_HOST_PORT", "9000")
+    environment = compose_process_environment()
+    assert "POSTGRES_PASSWORD" not in environment
+    assert "ROLLFORGE_MINIO_HOST_PORT" not in environment
+
+
 def test_preflight_rejects_open_write_or_execution_gates(tmp_path):
     files = deployment_files(tmp_path)
     repo, compose_env, hub_env, worker_env, web_env = files
@@ -167,6 +206,29 @@ def test_preflight_rejects_open_write_or_execution_gates(tmp_path):
     values["ROLLFORGE_SCHEDULER_ENABLED"] = "true"
     write_env(worker_env, values, 0o640)
     with pytest.raises(PreflightError, match="Scheduler 关闭"):
+        validate_environment(
+            repo, compose_env, hub_env, worker_env, web_env, None, node_check=lambda: None
+        )
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "message"),
+    [
+        (
+            "ROLLFORGE_DATABASE_URL",
+            "postgresql+asyncpg://db:pw@127.0.0.1:5432/rollforge",
+            "独立 PostgreSQL",
+        ),
+        ("ROLLFORGE_OBJECT_STORAGE_ENDPOINT", "http://127.0.0.1:9000", "独立 MinIO"),
+    ],
+)
+def test_preflight_requires_hub_to_use_rollforge_service_ports(tmp_path, key, value, message):
+    files = deployment_files(tmp_path)
+    repo, compose_env, hub_env, worker_env, web_env = files
+    values = dict(line.split("=", 1) for line in hub_env.read_text().splitlines())
+    values[key] = value
+    write_env(hub_env, values, 0o640)
+    with pytest.raises(PreflightError, match=message):
         validate_environment(
             repo, compose_env, hub_env, worker_env, web_env, None, node_check=lambda: None
         )
