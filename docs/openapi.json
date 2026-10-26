@@ -628,6 +628,52 @@
         "title": "LeaseReference",
         "type": "object"
       },
+      "MediaReference": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Path"
+          },
+          "duration_sec": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Sec"
+          },
+          "kind": {
+            "enum": [
+              "image",
+              "audio"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "media_type"
+        ],
+        "title": "MediaReference",
+        "type": "object"
+      },
       "ModelSpec": {
         "additionalProperties": false,
         "properties": {
@@ -1127,6 +1173,14 @@
               }
             ],
             "title": "Copied Context"
+          },
+          "media": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MediaReference"
+            },
+            "title": "Media",
+            "type": "array"
           },
           "message": {
             "title": "Message",

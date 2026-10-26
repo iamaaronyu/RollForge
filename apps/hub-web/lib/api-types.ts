@@ -669,6 +669,20 @@ export interface components {
              */
             readonly trial_id: string;
         };
+        /** MediaReference */
+        readonly MediaReference: {
+            /** Artifact Path */
+            readonly artifact_path?: string | null;
+            /** Duration Sec */
+            readonly duration_sec?: number | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            readonly kind: "image" | "audio";
+            /** Media Type */
+            readonly media_type: string;
+        };
         /** ModelSpec */
         readonly ModelSpec: {
             /**
@@ -893,6 +907,11 @@ export interface components {
         readonly TimelineStep: {
             /** Copied Context */
             readonly copied_context?: boolean | null;
+            /**
+             * Media
+             * @default []
+             */
+            readonly media: readonly components["schemas"]["MediaReference"][];
             /** Message */
             readonly message: string;
             /**

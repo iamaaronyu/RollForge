@@ -106,13 +106,28 @@ async def test_preview_bounds_plaintext_and_cross_execution(engine, server, stor
 
 
 async def test_trajectory_authorization_and_integrity(engine, server, store, output):
+    (output / "media.png").write_bytes(b"synthetic media attachment")
     trajectory = {
         "schema_version": "ATIF-v1.8",
         "steps": [
             {
                 "step_id": 1,
                 "source": "agent",
-                "message": "<script>synthetic</script>",
+                "message": [
+                    {"type": "text", "text": "<script>synthetic</script>"},
+                    {
+                        "type": "image",
+                        "source": {"media_type": "image/png", "path": "media.png"},
+                    },
+                    {
+                        "type": "audio",
+                        "source": {
+                            "media_type": "audio/mp3",
+                            "path": "https://media.invalid/private.mp3?token=secret",
+                            "duration_sec": 3.5,
+                        },
+                    },
+                ],
                 "metrics": {"completion_tokens": 0},
             }
         ],
@@ -128,6 +143,10 @@ async def test_trajectory_authorization_and_integrity(engine, server, store, out
         step = response.json()["steps"][0]
         assert step["usage"]["completion_tokens"] == 0
         assert step["usage"]["prompt_tokens"] is None and step["reasoning"] is None
+        assert step["media"][0]["artifact_path"] == "media.png"
+        assert step["media"][1]["media_type"] == "audio/mpeg"
+        assert step["media"][1]["artifact_path"] is None
+        assert "media.invalid" not in response.text and "token=secret" not in response.text
         for name, status in [("other_user", 404), ("worker", 403)]:
             assert (
                 await raw.get(endpoint, headers={"Authorization": "Bearer " + tokens[name]})

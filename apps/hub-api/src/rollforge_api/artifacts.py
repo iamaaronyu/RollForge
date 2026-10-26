@@ -107,11 +107,12 @@ async def trajectory_view(
     accepted = await store.accepted_execution(job_id, execution_id, identity.subject_id)
     if accepted is None:
         raise ApiFailure(404, ErrorCode.NOT_FOUND, "执行产物不存在")
+    index = await asyncio.to_thread(read_artifacts, request.app.state.settings, *accepted)
     value = await asyncio.to_thread(
         read_artifacts, request.app.state.settings, *accepted, "agent/trajectory.json"
     )
     try:
-        return project_trajectory(value)
+        return project_trajectory(value, available_media_paths={item.path for item in index.files})
     except UnsupportedTrajectory:
         raise ApiFailure(
             422, ErrorCode.INVALID_REQUEST, "轨迹格式不受支持，请查看原始文件"

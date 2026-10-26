@@ -25,6 +25,13 @@ class ToolObservation(Contract):
     text: str | None = None
 
 
+class MediaReference(Contract):
+    kind: Literal["image", "audio"]
+    media_type: str
+    artifact_path: str | None = None
+    duration_sec: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+
+
 class TimelineStep(Contract):
     step_id: int = Field(ge=1, strict=True)
     source: Literal["system", "user", "agent"]
@@ -34,6 +41,7 @@ class TimelineStep(Contract):
     usage: Usage | None = None
     tools: tuple[ToolAction, ...] = ()
     observations: tuple[ToolObservation, ...] = ()
+    media: tuple[MediaReference, ...] = ()
     copied_context: bool | None = None
 
 
