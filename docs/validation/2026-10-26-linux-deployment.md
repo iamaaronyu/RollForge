@@ -28,7 +28,7 @@
 - `rollforge-hub.service` 和 `rollforge-web.service` 已启用并运行，分别只监听 `127.0.0.1:8000` 与 `127.0.0.1:3300`，readiness/Web HTTP 均为 200。`rollforge-scheduler.service` 仍 disabled/inactive；任务创建写入、真实执行和 Web 实验运行开关保持关闭。
 - 代码验证：`make check` 为 169 passed、51 skipped；`make runtime-check` 为 9 passed。跳过项是需要额外真实 PostgreSQL、对象存储或运行数据的集成验收。
 
-仍需完成：对象存储和 PostgreSQL 的独立备份及隔离环境读回演练；受限模型网关的已认证调用、预算与过期/撤销验证；整机重启后确认服务自恢复；然后在明确预算的合成任务下进行单 Trial Worker→Hub→Harbor/E2B→模型→对象存储全链及中断恢复验收。上述真实任务未验收前，三个写入/执行开关继续关闭。Silo 镜像基于 AGPLv3 社区分支；仓库尚未确定自身许可证，发布或再分发前需先完成许可证审查。
+仍需完成：对象存储和 PostgreSQL 的独立备份及隔离环境读回演练；远程检查确认 `/mnt/rollforge-backups` 当前不是挂载点，需管理员先提供加密卷；受限模型网关的预算耗尽、过期/撤销和账本恢复验证；整机重启后确认服务自恢复；然后在明确预算的合成任务下进行单 Trial Worker→Hub→Harbor/E2B→模型→对象存储全链及中断恢复验收。上述真实任务未验收前，三个写入/执行开关继续关闭。Silo 镜像基于 AGPLv3 社区分支；仓库尚未确定自身许可证，发布或再分发前需先完成许可证审查。
 
 ### 预算与 Trial 就绪只读复核
 
