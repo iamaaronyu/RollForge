@@ -10,7 +10,7 @@
 | 3 | 受控产物与轨迹 Viewer | 所有权、对象作用域、摘要与大小检查，失败定位 | 基础索引/文本及主轨迹时间线已实现；多模态/子轨迹、搜索与聚合待开发 |
 | 4 | 不可变 Revision Registry 与批量展开 | 版本冻结、幂等展开、Retry 不增加样本数 | API、SDK、资产发现分页及中文 Registry 页已实现；最新版本可选创建审核范围内 Job；真实 PostgreSQL 所有权/摘要/拒绝与分页测试通过。新增真实多 Trial 验收入口；仍待具备运行凭证后完成 Harbor/E2B/模型运行，见 [验收入口说明](multitrial-acceptance.md)、[绑定验收](validation/2026-10-26-registry-binding.md) 与 [页面验收](validation/2026-10-26-registry-ui.md) |
 | 5 | 持续 Worker 与容量调度 | 真双 Worker、背压、重启恢复、有界回收 | 有界常驻 Worker、FIFO 入队、退避、优雅停机与鉴权租约回收已实现；18 项真实 PostgreSQL 执行/API 测试通过；双 Worker Harbor/E2B、进程重启和全局容量验收待完成，见 [验收记录](validation/2026-10-26-scheduler.md) |
-| 6 | 部署与故障演练 | SIGKILL/掉电、限流、备份读回、监控与升级恢复 | 待开发 |
+| 6 | 部署与故障演练 | SIGKILL/掉电、限流、备份读回、监控与升级恢复 | Job/Trial 取消 API、网页和 Linux systemd 模板已交付；真实 Sandbox 取消清理、主机安装/恢复、备份读回和监控仍待完成 |
 | 并行前置 | 网关与权限加固 | TLS/部署认证、token 级费用预算、用户登录、Worker/对象权限 | 请求次数已由 SQLite 持久化原子扣减；其余正式开放前完成 |
 
 每一切片先共享契约与权限，再实现 API/生成类型/页面；相关不变量用真实 PostgreSQL/MinIO 验证。修改执行链时补真实 Harbor/E2B/模型证据。提交前 make check；Runtime 改动追加 runtime-check。按文件独立提交，不混入其他 Agent 的改动。
@@ -22,3 +22,5 @@
 2026-10-26：开始 S1 调度切片，增加有界持续 Worker、指数退避、SIGTERM 清理和 Worker 鉴权租约回收 API；队列按入队时间、Job ID、样本序号排序，重试重新入队到队尾。进程容量为本地上限，不代表多进程集群额度。真实双 Worker Harbor/E2B 和中断恢复仍需验证。
 
 2026-10-26：增加 `/jobs/from-revisions`，把用户拥有的 Task/Agent/Model revision 安全绑定至部署者审核快照，并在执行快照中保留注册引用。普通 `/jobs` 拒绝带 `runtime` 的请求，防止用户绕过审核。Registry 网页和资产发现分页已完成；真实多 Trial Harbor/E2B/模型验收仍待完成。
+
+2026-10-26：增加 USER Job/Trial 取消接口和 SDK、详情页确认按钮及 `CANCELLED` Execution 状态。取消与完成事务使用同一 Trial 锁；真实 PostgreSQL 幂等、权限、租约撤销、并发完成互斥和迁移回退/重放通过。真实 E2B 清理时延与 SIGKILL/掉电恢复仍待验收。
