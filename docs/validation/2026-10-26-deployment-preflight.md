@@ -1,0 +1,13 @@
+# Linux 独立端口、Web 服务与部署预检
+
+日期：2026-10-26。本切片为 RollForge 数据服务配置可覆盖的 loopback 主机端口，并增加本机访问的 Web systemd unit 和启动前预检。没有连接模型或启动远端服务。
+
+Compose 默认映射 PostgreSQL、Redis、MinIO API 和 MinIO Console 至 `127.0.0.1:55432`、`:56379`、`:59000`、`:59001`，避免 E2B 常用的 `5432`、`6379`、`9000`、`9001`。端口可通过 `ROLLFORGE_*_HOST_PORT` 覆盖。检查目标节点时发现 Web 常见端口 3000 已占用，而 3300、Hub 的 8000 和四个数据服务端口均空闲；因此 Web 的本机端口由受保护 `web.env` 的 `ROLLFORGE_WEB_HOST_PORT` 配置，初始建议 3300。PostgreSQL 与 MinIO 继续使用独立命名卷，不依赖 E2B 的状态。
+
+新增 `rollforge-web.service`，使用系统 Node.js、`rollforge` 账号、严格 systemd 文件系统保护，只绑定 `127.0.0.1`；监听端口从 root 管理的 `/etc/rollforge/web.env` 读取（目标节点建议 3300）。单用户 UI 没有登录系统，部署手册要求只经 SSH 隧道访问，不接公网反向代理。
+
+`scripts/check_deployment.py` 在启动前静态校验敏感环境文件权限、数据库与存储强凭证、Hub USER/WORKER 凭证摘要、Web USER Token 归属、受限服务环境变量和凭证隔离、loopback URL 与 unit 加固选项、首次部署写入/Worker/Scheduler/Web 开关均关闭、Compose 配置、端口可用性和 PostgreSQL/MinIO 命名卷。预检将 Compose 输出和配置值留在内存，不打印凭证；它不启动、停止或修改容器，也不代表服务健康或真实执行验收通过。
+
+验证：`docker compose config --format json` 展开的四个数据服务端口均绑定 loopback、互不冲突，并避开 E2B 常用端口。9 项预检单元测试覆盖安全配置、占用端口、公开绑定、Scheduler 门误开、Web token 归属、环境文件权限、未替换的示例口令、误放上游模型 Key 和 Web 端口冲突。完整 `make check`：151 passed、51 skipped；Python lint/格式、OpenAPI 检查、Web 类型检查与 Next.js 构建通过；有一项既有 Starlette/httpx 弃用警告。`make runtime-check`：9 passed。目标 Ubuntu 上的 `systemd-analyze verify` 对 Web unit 临时副本返回成功；仅将 ExecStart、EnvironmentFile 与可写缓存目录替换为本机安全占位路径，验证 parser 和 unit 指令，不安装服务。该命令同时报告目标机既有 unit 的权限/兼容性警告，与 RollForge unit 无关。
+
+边界：本轮未在 `100.106.244.122` 安装文件或启动服务。目标机的管理员安装、独立 Compose 健康检查、Hub readiness、数据库备份读回、对象存储验收、TLS/网关部署认证及真实 Harbor/E2B/模型主链仍待完成。若首次部署预检缺少上述私密配置，会安全失败；不要为通过检查而开放执行开关或复用 E2B 数据卷。

@@ -1,15 +1,16 @@
 # Linux 部署与恢复
 
-本文提供 Ubuntu/systemd 的 Hub API 与单并发 Worker Scheduler 安装模板。它不替代真实 Harbor/E2B/模型端到端验收；部署服务默认仍关闭任务写入和执行，只有完成凭证配置、网络与存储验收后才能由操作者显式打开。
+本文提供 Ubuntu/systemd 的 Hub API、Web Console 与单并发 Worker Scheduler 安装模板。它不替代真实 Harbor/E2B/模型端到端验收；部署服务默认仍关闭任务写入和执行，只有完成凭证配置、网络与存储验收后才能由操作者显式打开。
 
 ## 组件和边界
 
-- `rollforge-hub.service` 只监听 `127.0.0.1:8000`，应由已有 TLS 反向代理转发；不要把 Uvicorn 端口直接暴露到公网。
+- `rollforge-hub.service` 只监听 `127.0.0.1:8000`。`rollforge-web.service` 只监听 loopback，端口由受保护的 `web.env` 配置，仅适合本机或 SSH 隧道访问；当前 Web 使用单一服务端 USER Token，没有多用户登录，不得接公网反向代理。
 - `rollforge-scheduler.service` 以并发 1 运行，适合目前 8 GiB 的实验主机。增加并发或第二个 Scheduler 前，先做容量与 Harbor/E2B 竞争验收。
 - PostgreSQL 是任务和租约的权威状态源；Redis 只用于通知/缓存。对象存储需由 Hub 与 Worker 共同访问。
+- RollForge Compose 使用 loopback 主机端口 55432、56379、59000、59001，分别映射 PostgreSQL、Redis、MinIO API 和 Console；端口可通过 `ROLLFORGE_*_HOST_PORT` 覆盖。先用预检确认空闲。不要复用 E2B 的容器、数据库卷或默认监听端口。
 - Worker Runtime 会话单独放在 `/var/lib/rollforge/private/runtime.env`，不能把 Hub token、对象存储密钥或上游 `ANTHROPIC_API_KEY` 放入其中。
 
-本次模板状态与验证范围见 [Linux systemd 部署模板验证](validation/2026-10-26-linux-deployment.md)。
+systemd 模板的基础验证见 [Linux systemd 部署模板验证](validation/2026-10-26-linux-deployment.md)；本次独立端口、Web unit 与部署预检器验证见 [部署预检记录](validation/2026-10-26-deployment-preflight.md)。
 
 ## 安装
 
@@ -19,6 +20,7 @@
 sudo useradd --system --home-dir /var/lib/rollforge --create-home --shell /usr/sbin/nologin rollforge
 sudo install -d -o root -g rollforge -m 0750 /etc/rollforge
 sudo install -d -o rollforge -g rollforge -m 0700 /var/lib/rollforge
+sudo install -d -o rollforge -g rollforge -m 0700 /var/lib/rollforge/private /var/lib/rollforge/spool
 sudo install -d -o root -g root -m 0755 /opt/rollforge
 ```
 
@@ -28,15 +30,59 @@ sudo install -d -o root -g root -m 0755 /opt/rollforge
 cd /opt/rollforge
 sudo uv sync --all-packages --locked
 sudo uv sync --project integration/harbor-runtime --python 3.12 --locked
+sudo npm --prefix apps/hub-web ci
+sudo npm --prefix apps/hub-web run build
 sudo chown -R root:root /opt/rollforge
 sudo chmod -R go-w /opt/rollforge
+sudo install -d -o rollforge -g rollforge -m 0750 /opt/rollforge/apps/hub-web/.next/cache
 ```
+
+Next.js 生产服务要求系统级 Node.js 20.9 或更新版本，路径为 `/usr/bin/node`。不要依赖登录用户的 nvm 路径，因为 unit 使用 `ProtectHome=true`。
+
+## 独立数据服务与部署预检
+
+在 `/etc/rollforge/infra.env` 创建 0600 文件。PostgreSQL 与 MinIO 口令必须是不同的随机值，不能沿用 `.env.example` 的开发口令。Compose 默认使用非 E2B 端口；如需覆盖，确保仍绑定 loopback 且端口空闲：
+
+```dotenv
+POSTGRES_USER=rollforge
+POSTGRES_PASSWORD=<独立随机强口令>
+POSTGRES_DB=rollforge
+MINIO_ROOT_USER=rollforge-storage
+MINIO_ROOT_PASSWORD=<另一组独立随机强口令>
+ROLLFORGE_POSTGRES_HOST_PORT=55432
+ROLLFORGE_REDIS_HOST_PORT=56379
+ROLLFORGE_MINIO_HOST_PORT=59000
+ROLLFORGE_MINIO_CONSOLE_HOST_PORT=59001
+```
+
+在填好受保护的 `hub.env`、`worker.env` 后，先运行只读预检。它检查配置文件权限、强制关闭首次部署写入和执行开关、校验 USER/WORKER Token 摘要匹配、Compose loopback 绑定、端口冲突和 PostgreSQL/MinIO 命名卷；若提供 `web.env`，也校验 Node.js、loopback Hub 地址和 USER Token 归属。预检错误不打印配置值：
+
+```sh
+sudo /opt/rollforge/.venv/bin/python /opt/rollforge/scripts/check_deployment.py \
+  --compose-env /etc/rollforge/infra.env \
+  --hub-env /etc/rollforge/hub.env \
+  --worker-env /etc/rollforge/worker.env \
+  --web-env /etc/rollforge/web.env
+```
+
+预检须在第一次启动 RollForge 数据服务和 Hub/Web 前运行；它通过尝试绑定 loopback 端口检查当前冲突，不会启动容器或服务，也不证明依赖健康。通过后启动独立 Compose 项目并等待健康检查：
+
+```sh
+sudo docker compose --project-name rollforge \
+  --env-file /etc/rollforge/infra.env \
+  --file /opt/rollforge/infra/docker-compose/compose.yaml up -d
+sudo docker compose --project-name rollforge \
+  --env-file /etc/rollforge/infra.env \
+  --file /opt/rollforge/infra/docker-compose/compose.yaml ps
+```
+
+PostgreSQL 与 MinIO 数据保存在独立命名卷 `rollforge_postgres-data` 和 `rollforge_minio-data`。Redis 是可重建缓存。禁止用 `down -v` 清理；上线前需另行设置加密备份与读回演练。
 
 在 `/etc/rollforge/hub.env` 和 `/etc/rollforge/worker.env` 创建本机专用配置，权限设为 `root:rollforge 0640`。不要通过命令行参数、shell history、工单或聊天传递 token。环境文件格式为 `KEY=value`；值中不要使用 shell 展开语法。
 
-Hub 至少需要：`ROLLFORGE_ENVIRONMENT=production`、`ROLLFORGE_DATABASE_URL`、`ROLLFORGE_API_CREDENTIALS`。先保持 `ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED=false`。API credentials 配置只保存 USER/WORKER token 的 SHA256 摘要，原始 token 由客户端保管。
+Hub 至少需要：`ROLLFORGE_ENVIRONMENT=production`、`ROLLFORGE_DATABASE_URL`、`ROLLFORGE_API_CREDENTIALS` 和对象存储 endpoint/bucket/access key/secret key。USER 与 WORKER 使用不同随机 Token；API credentials 只保存其 SHA256 摘要，原始 Token 由对应客户端保管。Hub 与 Worker 使用相同对象存储 endpoint/bucket、不同最小权限访问密钥。若 MinIO 仅在同一主机 loopback 提供 HTTP，Hub 和 Worker 均须显式设置 `ROLLFORGE_OBJECT_STORAGE_ALLOW_LOCAL_HTTP=true`；不得用该开关接受 LAN HTTP。先保持 `ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED=false`。
 
-Worker 配置至少需要：`ROLLFORGE_WORKER_HUB_URL`、`ROLLFORGE_WORKER_HUB_TOKEN`、`ROLLFORGE_WORKER_RUNTIME_PYTHON=/opt/rollforge/integration/harbor-runtime/.venv/bin/python`、`ROLLFORGE_WORKER_RUNTIME_ENV_FILE=/var/lib/rollforge/private/runtime.env`、经过验收的 `ROLLFORGE_WORKER_GATEWAY_URL`、对象存储 endpoint/bucket/access key/secret key，以及 spool 路径 `/var/lib/rollforge/spool`。先设置 `ROLLFORGE_WORKER_RUNS_ENABLED=false`、`ROLLFORGE_SCHEDULER_ENABLED=false`、`ROLLFORGE_SCHEDULER_CONCURRENCY=1`。
+Worker 配置至少需要：`ROLLFORGE_WORKER_HUB_URL`、`ROLLFORGE_WORKER_HUB_TOKEN`、`ROLLFORGE_WORKER_RUNTIME_PYTHON=/opt/rollforge/integration/harbor-runtime/.venv/bin/python`、`ROLLFORGE_WORKER_RUNTIME_ENV_FILE=/var/lib/rollforge/private/runtime.env`、经过验收的 `ROLLFORGE_WORKER_GATEWAY_URL`、与 Hub 相同的对象存储 endpoint/bucket、独立对象存储 access key/secret key，以及 spool 路径 `/var/lib/rollforge/spool`。先设置 `ROLLFORGE_WORKER_RUNS_ENABLED=false`、`ROLLFORGE_SCHEDULER_ENABLED=false`、`ROLLFORGE_SCHEDULER_CONCURRENCY=1`。
 
 Runtime 会话目录和文件使用独立权限。目录由 `rollforge` 拥有且为 0700，文件由 `rollforge` 拥有且为 0600，以满足 Worker 检查并允许服务读取：
 
@@ -53,12 +99,41 @@ sudo install -o rollforge -g rollforge -m 0600 /dev/null /var/lib/rollforge/priv
 
 ```sh
 sudo install -m 0644 infra/systemd/rollforge-hub.service /etc/systemd/system/
+sudo install -m 0644 infra/systemd/rollforge-web.service /etc/systemd/system/
 sudo install -m 0644 infra/systemd/rollforge-scheduler.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemd-analyze verify /etc/systemd/system/rollforge-hub.service /etc/systemd/system/rollforge-scheduler.service
+sudo systemd-analyze verify /etc/systemd/system/rollforge-hub.service /etc/systemd/system/rollforge-web.service /etc/systemd/system/rollforge-scheduler.service
 sudo -u rollforge /opt/rollforge/.venv/bin/python -m rollforge_scheduler --check
-sudo systemctl enable --now rollforge-hub.service
 ```
+
+首次迁移通过 transient systemd service 读取受保护的 Hub 环境文件，不把数据库 URL 放到命令行：
+
+```sh
+sudo systemd-run --wait --pipe --collect \
+  --uid=rollforge --gid=rollforge \
+  --property=WorkingDirectory=/opt/rollforge/apps/hub-api \
+  --property=EnvironmentFile=/etc/rollforge/hub.env \
+  /opt/rollforge/.venv/bin/alembic -c /opt/rollforge/apps/hub-api/alembic.ini upgrade head
+```
+
+然后只启动 Hub 和本机 Web；不要启用 Scheduler：
+
+```sh
+sudo systemctl enable --now rollforge-hub.service
+sudo systemctl enable --now rollforge-web.service
+sudo systemctl status rollforge-hub.service rollforge-web.service
+curl --fail http://127.0.0.1:8000/health/ready
+```
+
+在 `web.env` 设置空闲的 `ROLLFORGE_WEB_HOST_PORT`（目标节点的 3000 已占用时可先尝试 3300）；预检会检查该端口。systemd unit 仍只绑定 loopback。按实际主机与端口从管理电脑建立 SSH 隧道，然后访问本机 `http://127.0.0.1:3000`：
+
+```sh
+REMOTE_WEB_PORT=3300
+SSH_TARGET=user@host
+ssh -N -L "3000:127.0.0.1:${REMOTE_WEB_PORT}" "$SSH_TARGET"
+```
+
+`web.env` 只含 `ROLLFORGE_API_URL=http://127.0.0.1:8000`、匹配 Hub USER 角色的 `ROLLFORGE_WEB_USER_TOKEN`、`ROLLFORGE_WEB_ALLOW_EXPERIMENTAL_RUNS=false` 和 `ROLLFORGE_WEB_HOST_PORT`；禁止 `NEXT_PUBLIC_` 凭证。Web 仅用于单用户本地验收。Hub 的 `ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED`、Worker 的 `ROLLFORGE_WORKER_RUNS_ENABLED`、Scheduler 的 `ROLLFORGE_SCHEDULER_ENABLED` 都保持 `false`。Scheduler unit 只安装，不启用。
 
 Scheduler 在 `ROLLFORGE_SCHEDULER_ENABLED` 或 `ROLLFORGE_WORKER_RUNS_ENABLED` 任一关闭时会拒绝启动，因此准备阶段只运行上面的无执行 `--check`，不要启用 Scheduler unit。完成真实数据库、对象存储、Hub 鉴权、Harbor/E2B、受限模型会话与恢复验收后，再由操作者在 `worker.env` 同时打开两个开关，并启动 Scheduler：
 

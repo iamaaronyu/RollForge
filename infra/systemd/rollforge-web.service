@@ -1,0 +1,31 @@
+[Unit]
+Description=RollForge Hub Web Console
+After=network-online.target rollforge-hub.service
+Wants=network-online.target rollforge-hub.service
+
+[Service]
+Type=simple
+User=rollforge
+Group=rollforge
+WorkingDirectory=/opt/rollforge/apps/hub-web
+EnvironmentFile=/etc/rollforge/web.env
+Environment=NODE_ENV=production
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node /opt/rollforge/apps/hub-web/node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port ${ROLLFORGE_WEB_HOST_PORT}
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/opt/rollforge/apps/hub-web/.next/cache
+
+[Install]
+WantedBy=multi-user.target
