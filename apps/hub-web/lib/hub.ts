@@ -51,6 +51,23 @@ export async function hubText(path: string): Promise<string> {
   const response = await request(path);
   try { return await response.text(); } catch { throw new HubProblem(502); }
 }
+export async function hubMedia(path: string): Promise<{ dataUrl: string; mediaType: string }> {
+  const response = await request(path);
+  const mediaType = response.headers.get("content-type")?.split(";", 1)[0]?.toLowerCase();
+  const allowed = new Set([
+    "image/jpeg", "image/png", "image/gif", "image/webp", "audio/wav", "audio/mpeg",
+    "audio/mp4", "audio/aac", "audio/ogg", "audio/flac", "audio/webm", "audio/aiff",
+  ]);
+  if (!mediaType || !allowed.has(mediaType)) throw new HubProblem(415);
+  try {
+    const bytes = await response.arrayBuffer();
+    if (bytes.byteLength > 8 * 1024 * 1024) throw new HubProblem(413);
+    return { dataUrl: `data:${mediaType};base64,${Buffer.from(bytes).toString("base64")}`, mediaType };
+  } catch (error) {
+    if (error instanceof HubProblem) throw error;
+    throw new HubProblem(502);
+  }
+}
 export function message(error: unknown): string {
   return error instanceof HubProblem ? error.message : "服务暂不可用，请稍后重试。";
 }

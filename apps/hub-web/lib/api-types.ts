@@ -107,6 +107,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/jobs/{job_id}/executions/{execution_id}/artifact-media": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Artifact Media */
+        readonly get: operations["artifact_media"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/jobs/{job_id}/executions/{execution_id}/artifact-text": {
         readonly parameters: {
             readonly query?: never;
@@ -1572,6 +1589,99 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["ApiError"];
                 };
+            };
+            /** @description Unprocessable Entity */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    readonly artifact_media: {
+        readonly parameters: {
+            readonly query: {
+                readonly path: string;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly job_id: string;
+                readonly execution_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description 媒体超过预览上限 */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 媒体类型不支持 */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unprocessable Entity */
             readonly 422: {

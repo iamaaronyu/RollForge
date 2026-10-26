@@ -1,11 +1,12 @@
 """只读取数据库已接受的执行产物；浏览器不能指定存储对象键。"""
 
 import asyncio
+from pathlib import PurePosixPath
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import Query, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from rollforge_harbor_adapter.trajectory import UnsupportedTrajectory, project_trajectory
 from rollforge_object_store.bundle import BundlePublisher
 from rollforge_object_store.s3 import ObjectStoreError, S3ObjectStore
@@ -13,6 +14,27 @@ from rollforge_schemas.api import ArtifactIndex, ErrorCode
 from rollforge_schemas.trajectory import TrajectoryView
 
 from rollforge_api.routes import ApiFailure, Store, User, router
+
+MAX_MEDIA_PREVIEW_BYTES = 8 * 1024 * 1024
+MEDIA_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".wav": "audio/wav",
+    ".mp3": "audio/mpeg",
+    ".mpga": "audio/mpeg",
+    ".mp4": "audio/mp4",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".ogg": "audio/ogg",
+    ".oga": "audio/ogg",
+    ".flac": "audio/flac",
+    ".webm": "audio/webm",
+    ".aif": "audio/aiff",
+    ".aiff": "audio/aiff",
+}
 
 
 def read_artifacts(settings, scope, result, path=None):
@@ -47,6 +69,36 @@ def read_artifacts(settings, scope, result, path=None):
         if "\x00" in value:
             raise ApiFailure(422, ErrorCode.INVALID_REQUEST, "该产物不支持文本预览")
         return value
+    finally:
+        objects.close()
+
+
+def read_artifact_media(settings, scope, result, path: str) -> tuple[bytes, str]:
+    """Return only small, manifest-listed media after full digest verification."""
+    try:
+        objects = S3ObjectStore(
+            settings.object_storage_endpoint,
+            settings.object_storage_bucket,
+            settings.object_storage_access_key,
+            settings.object_storage_secret_key,
+            allow_local_http=settings.object_storage_allow_local_http,
+        )
+    except ValueError:
+        raise ObjectStoreError("对象存储配置无效") from None
+    try:
+        manifest = BundlePublisher(objects, sensitive_values=()).inspect(
+            scope, result.manifest_digest
+        )
+        file = next((item for item in manifest.files if item.path == path), None)
+        if file is None:
+            raise ApiFailure(404, ErrorCode.NOT_FOUND, "产物不存在")
+        media_type = MEDIA_TYPES.get(PurePosixPath(file.path).suffix.lower())
+        if media_type is None:
+            raise ApiFailure(415, ErrorCode.INVALID_REQUEST, "该产物不是支持预览的图片或音频")
+        if file.size > MAX_MEDIA_PREVIEW_BYTES:
+            raise ApiFailure(413, ErrorCode.INVALID_REQUEST, "媒体预览最多支持 8 MiB")
+        data = objects.read_verified(scope.prefix + "/files/" + file.path, file.digest, file.size)
+        return data, media_type
     finally:
         objects.close()
 
@@ -91,6 +143,38 @@ async def artifact_text(
             "Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff",
             "Content-Security-Policy": "default-src 'none'",
+        },
+    )
+
+
+@router.get(
+    "/jobs/{job_id}/executions/{execution_id}/artifact-media",
+    tags=["artifacts"],
+    operation_id="artifact_media",
+    responses={413: {"description": "媒体超过预览上限"}, 415: {"description": "媒体类型不支持"}},
+)
+async def artifact_media(
+    job_id: UUID,
+    execution_id: UUID,
+    identity: User,
+    store: Store,
+    request: Request,
+    path: Annotated[str, Query(min_length=1, max_length=768)],
+):
+    accepted = await store.accepted_execution(job_id, execution_id, identity.subject_id)
+    if accepted is None:
+        raise ApiFailure(404, ErrorCode.NOT_FOUND, "执行产物不存在")
+    data, media_type = await asyncio.to_thread(
+        read_artifact_media, request.app.state.settings, *accepted, path
+    )
+    return Response(
+        data,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'",
+            "Cross-Origin-Resource-Policy": "same-origin",
         },
     )
 

@@ -80,6 +80,7 @@ async def test_preview_bounds_plaintext_and_cross_execution(engine, server, stor
     (output / "html.txt").write_text('<script>alert("synthetic")</script>')
     (output / "large.txt").write_bytes(b"x" * (1024 * 1024 + 1))
     (output / "binary.dat").write_bytes(b"\xff\x00")
+    (output / "oversized.png").write_bytes(b"x" * (8 * 1024 * 1024 + 1))
     async with clients(engine) as (app, sdk, raw, _ids, tokens):
         storage_settings(app, server, store)
         scope, _result = await publish(engine, server, store, output, sdk)
@@ -89,6 +90,14 @@ async def test_preview_bounds_plaintext_and_cross_execution(engine, server, stor
             assert (
                 await raw.get(base + "/artifact-text", headers=headers, params={"path": path})
             ).status_code == status
+        assert (
+            await raw.get(base + "/artifact-media", headers=headers, params={"path": "large.txt"})
+        ).status_code == 415
+        assert (
+            await raw.get(
+                base + "/artifact-media", headers=headers, params={"path": "oversized.png"}
+            )
+        ).status_code == 413
         response = await raw.get(
             base + "/artifact-text", headers=headers, params={"path": "html.txt"}
         )
@@ -147,9 +156,26 @@ async def test_trajectory_authorization_and_integrity(engine, server, store, out
         assert step["media"][1]["media_type"] == "audio/mpeg"
         assert step["media"][1]["artifact_path"] is None
         assert "media.invalid" not in response.text and "token=secret" not in response.text
+        media_response = await raw.get(
+            f"/api/v1/jobs/{scope.job_id}/executions/{scope.execution_id}/artifact-media",
+            headers=headers,
+            params={"path": "media.png"},
+        )
+        assert media_response.status_code == 200
+        assert media_response.content == b"synthetic media attachment"
+        assert media_response.headers["content-type"].startswith("image/png")
+        assert media_response.headers["x-content-type-options"] == "nosniff"
+        assert media_response.headers["cache-control"] == "no-store"
         for name, status in [("other_user", 404), ("worker", 403)]:
             assert (
                 await raw.get(endpoint, headers={"Authorization": "Bearer " + tokens[name]})
+            ).status_code == status
+            assert (
+                await raw.get(
+                    f"/api/v1/jobs/{scope.job_id}/executions/{scope.execution_id}/artifact-media",
+                    headers={"Authorization": "Bearer " + tokens[name]},
+                    params={"path": "media.png"},
+                )
             ).status_code == status
         store.client.put_object(
             Bucket=store.bucket, Key=scope.prefix + "/files/agent/trajectory.json", Body=b"changed"
