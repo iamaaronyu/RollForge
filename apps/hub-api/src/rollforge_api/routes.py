@@ -198,6 +198,34 @@ async def get_job(job_id: UUID, identity: User, store: Store):
 
 
 @router.post(
+    "/jobs/{job_id}/cancel",
+    response_model=JobView,
+    tags=["jobs"],
+    operation_id="cancel_job",
+)
+async def cancel_job(job_id: UUID, identity: User, _gate: WriteGate, store: Store):
+    result = await store.cancel_job(job_id, identity.subject_id)
+    if result is None:
+        raise ApiFailure(404, ErrorCode.NOT_FOUND, "Job 不存在")
+    return result
+
+
+@router.post(
+    "/jobs/{job_id}/trials/{trial_id}/cancel",
+    response_model=TrialView,
+    tags=["jobs"],
+    operation_id="cancel_trial",
+)
+async def cancel_trial(
+    job_id: UUID, trial_id: UUID, identity: User, _gate: WriteGate, store: Store
+):
+    result = await store.cancel_trial(job_id, trial_id, identity.subject_id)
+    if result is None:
+        raise ApiFailure(404, ErrorCode.NOT_FOUND, "Trial 不存在")
+    return result
+
+
+@router.post(
     "/worker/leases/claim",
     response_model=Lease,
     tags=["worker"],

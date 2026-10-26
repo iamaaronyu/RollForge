@@ -54,6 +54,8 @@ UV_CACHE_DIR=.cache/uv uv run python -m rollforge_scheduler --run
 
 调度器须同时显式启用 `ROLLFORGE_SCHEDULER_ENABLED` 与 `ROLLFORGE_WORKER_RUNS_ENABLED`。它用 `ROLLFORGE_SCHEDULER_CONCURRENCY` 或 `--concurrency` 限制单进程 Worker 槽位（1–16，默认 1）；空队列按配置轮询，失败指数退避，恢复循环调用鉴权租约回收 API。停止时先停止新领取并等待现有执行；超过宽限期后取消 Worker，由 Worker 向 Runtime 发 SIGTERM 并等待 Harbor 清理。过期 Retry 重新排至 FIFO 队尾。此配置只限制单个进程，并非多进程集群的全局容量；部署时必须按所有进程并发之和做容量预算。
 
+USER 可通过 Hub 取消 Job 或单个 Trial。未开始 Trial 立即进入 CANCELLED；运行中 Trial 的 Execution 租约在事务内撤销，状态标记为 CANCELLED。Worker 最迟在 30 秒续租周期内发现租约失效，取消 Runtime 子进程并等待 Harbor 清理；取消后的提交会被 Hub 拒绝。SIGTERM 清理语义复用 Worker 现有路径，仍需单独验收真实 Sandbox 取消时延、孤儿回收和清理失败处理。
+
 每次仅领取一个可运行 Trial，租约 300 秒、每 30 秒续租。任务包和私密快照落入 Execution 独立目录，然后启动固定 Runtime。Harbor 独占 Sandbox 生命周期，Worker 不创建或销毁 Sandbox。租约丢失或 Worker 被取消时向子进程发送 SIGTERM，并等待 Harbor 的清理过程；不使用 SIGKILL 代替清理。操作系统强制终止或主机掉电仍需平台恢复验收，不能依赖 Python finally 保证处理。
 
 Runtime 只有在 Harbor 原生 result.json 校验及 Task 内容复核通过后写入 native-ready.json。异常且没有该标记时，不伪造评分结果，不重跑同一 Execution，等待 PostgreSQL 的有界过期回收。

@@ -1,6 +1,6 @@
 "use server";
 import { redirect } from "next/navigation";
-import { experimental, hub, validId, type JobView } from "../../lib/hub";
+import { experimental, hub, hubPost, validId, type JobView, type TrialView } from "../../lib/hub";
 
 export async function createJob(form: FormData) {
   const jobId = String(form.get("jobId") ?? "");
@@ -12,4 +12,21 @@ export async function createJob(form: FormData) {
     await hub<JobView>("/api/v1/jobs/from-approved-task", { job_id: jobId, task_id: taskId, trial_count: trialCount });
   } catch { redirect("/jobs?error=create"); }
   redirect(`/jobs/${jobId}`);
+}
+
+export async function cancelJob(form: FormData) {
+  const jobId = String(form.get("jobId") ?? "");
+  if (!experimental() || !validId(jobId)) redirect("/jobs?error=cancel");
+  try { await hubPost<JobView>(`/api/v1/jobs/${jobId}/cancel`); }
+  catch { redirect(`/jobs/${jobId}?error=cancel`); }
+  redirect(`/jobs/${jobId}?notice=cancelled`);
+}
+
+export async function cancelTrial(form: FormData) {
+  const jobId = String(form.get("jobId") ?? "");
+  const trialId = String(form.get("trialId") ?? "");
+  if (!experimental() || !validId(jobId) || !validId(trialId)) redirect("/jobs?error=cancel");
+  try { await hubPost<TrialView>(`/api/v1/jobs/${jobId}/trials/${trialId}/cancel`); }
+  catch { redirect(`/jobs/${jobId}?error=cancel`); }
+  redirect(`/jobs/${jobId}?notice=cancelled`);
 }

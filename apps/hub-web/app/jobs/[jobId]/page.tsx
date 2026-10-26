@@ -1,16 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { hub, HubProblem, labels, message, resultText, validId, type JobView, type ExecutionList, type TrialList } from "../../../lib/hub";
+import { experimental, hub, HubProblem, labels, message, resultText, validId, type JobView, type ExecutionList, type TrialList } from "../../../lib/hub";
+import { CancelJobButton, CancelTrialButton } from "./cancel-buttons";
 
 export const dynamic = "force-dynamic";
 export default async function Detail({ params, searchParams }: {
   params: Promise<{ jobId: string }>;
-  searchParams: Promise<{ after?: string; trialAfter?: string }>;
+  searchParams: Promise<{ after?: string; trialAfter?: string; error?: string; notice?: string }>;
 }) {
   return renderDetail(params, searchParams);
 }
-async function renderDetail(params: Promise<{ jobId: string }>, searchParams: Promise<{ after?: string; trialAfter?: string }>) {
-  const { jobId } = await params; const { after, trialAfter } = await searchParams;
+async function renderDetail(params: Promise<{ jobId: string }>, searchParams: Promise<{ after?: string; trialAfter?: string; error?: string; notice?: string }>) {
+  const { jobId } = await params; const { after, trialAfter, error, notice } = await searchParams;
   if (!validId(jobId)) notFound();
   let job: JobView; let executions: ExecutionList; let trials: TrialList;
   try {
@@ -25,15 +26,18 @@ async function renderDetail(params: Promise<{ jobId: string }>, searchParams: Pr
     return <main><Link href="/jobs">← 我的任务</Link><h1>暂时无法读取任务</h1><p role="alert">{message(error)}</p><Link href={`/jobs/${jobId}`}>重试</Link></main>;
   }
   return <main><header><Link href="/jobs">← 我的任务</Link><Link href={`/jobs/${jobId}`}>刷新</Link></header>
+    {error === "cancel" && <p role="alert">取消请求未完成，请刷新任务状态后重试。</p>}
+    {notice === "cancelled" && <p role="status">取消请求已接受；Worker 会在下次续租检查时终止运行并清理 Sandbox。</p>}
     <h1>执行详情</h1><p className="identifier">{jobId}</p>
     <section className="panel"><h2>{job.terminal_trial_count} / {job.trial_count} 个样本已结束</h2>
       <p>首样本：{labels[job.trial.status]} · {resultText(job.trial.result)}</p>
       <dl><dt>Task Revision</dt><dd>{job.snapshot.task.id} · v{job.snapshot.task.revision}</dd><dt>执行预算</dt><dd>每个样本最多 {job.snapshot.max_executions} 次 · 超时 {job.snapshot.timeout_sec} 秒</dd></dl>
       <p className="note">样本序号 0 至 {job.trial_count - 1} 在创建时确定。0 分是有效评分；Retry 保留同一 Trial，仅创建新的 Execution。</p>
+      {experimental() && job.terminal_trial_count < job.trial_count && <CancelJobButton jobId={jobId} />}
     </section>
     <section className="panel"><h2>逻辑 Trial 样本</h2>
-      <div className="table-wrap"><table><thead><tr><th>样本序号</th><th>Trial</th><th>状态</th><th>执行序号</th><th>结果</th></tr></thead><tbody>
-        {trials.items.map(item => <tr key={item.trial_id}><td>{item.attempt_index}</td><td className="identifier">{item.trial_id}</td><td>{labels[item.status]}</td><td>{item.fencing_token || "未领取"}</td><td>{resultText(item.result)}</td></tr>)}
+      <div className="table-wrap"><table><thead><tr><th>样本序号</th><th>Trial</th><th>状态</th><th>执行序号</th><th>结果</th><th>操作</th></tr></thead><tbody>
+        {trials.items.map(item => <tr key={item.trial_id}><td>{item.attempt_index}</td><td className="identifier">{item.trial_id}</td><td>{labels[item.status]}</td><td>{item.fencing_token || "未领取"}</td><td>{resultText(item.result)}</td><td>{experimental() && ["PENDING", "QUEUED", "RUNNING"].includes(item.status) ? <CancelTrialButton jobId={jobId} trialId={item.trial_id} /> : "—"}</td></tr>)}
       </tbody></table></div>
       <nav>{trials.next_cursor !== null && trials.next_cursor !== undefined && <Link href={`/jobs/${jobId}?trialAfter=${trials.next_cursor}`}>下一页样本 →</Link>}</nav>
     </section>

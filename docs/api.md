@@ -9,6 +9,8 @@
 | `GET /docs` | 交互式 API 文档 |
 | `POST /api/v1/jobs` | USER 创建 Job 并按 `trial_count` 展开 1–1000 个 Trial；相同输入幂等 |
 | `POST /api/v1/jobs/from-revisions` | USER 按 Task/Agent/Model Registry 引用创建 Job；必须匹配部署审核目录 |
+| `POST /api/v1/jobs/{job_id}/cancel` | USER 取消 Job 下所有未结束 Trial |
+| `POST /api/v1/jobs/{job_id}/trials/{trial_id}/cancel` | USER 取消指定 Trial |
 | `GET /api/v1/registry/assets` | USER 查询自己的资产摘要，按 UUID 游标分页 |
 | `GET /api/v1/registry/assets/{asset_id}/revisions` | USER 查询资产的不可变版本 |
 | `POST /api/v1/registry/revisions` | USER 登记新资产版本；由控制面写开关限制 |
@@ -18,7 +20,7 @@
 | `POST /api/v1/worker/leases/finish` | WORKER 提交结果元数据；同一结果可幂等重放 |
 | `POST /api/v1/worker/leases/recover` | WORKER 有界回收已过期租约；预算耗尽的 Trial 失败，否则重新排队 |
 
-业务接口已实现，控制面写接口默认关闭。ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED 默认为 false；关闭时创建、领取、续租、完成返回 503 / WRITES_DISABLED。GET 查询仍需认证。Worker 执行与恢复实现见 [Worker 说明](worker.md)，受限 LAN、并发 1 的合成样例真实全链已通过。网关请求次数已持久化，但 TLS、部署身份认证、用户登录与 token 级费用预算仍未完成；platform 的 execution_enabled 保持 false，control_plane_writes_enabled 单独报告元数据写开关，不表示完成 S0 或开放真实执行。
+业务接口已实现，控制面写接口默认关闭。ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED 默认为 false；关闭时创建、取消、领取、续租、完成返回 503 / WRITES_DISABLED。GET 查询仍需认证。用户取消会在 PostgreSQL 事务中将未开始 Trial 置为 CANCELLED；运行中的 Trial 同事务撤销 Execution 租约并标记 CANCELLED，Worker 在下次续租（最多约 30 秒）发现租约撤销后通过现有 SIGTERM 路径清理 Runtime。取消与完成由同一 Trial 锁串行化，重复取消幂等。该 API 不等同于即时强制杀进程，真实 E2B 取消时延与清理仍需运行验收。Worker 执行与恢复实现见 [Worker 说明](worker.md)，受限 LAN、并发 1 的合成样例真实全链已通过。网关请求次数已持久化，但 TLS、部署身份认证、用户登录与 token 级费用预算仍未完成；platform 的 execution_enabled 保持 false，control_plane_writes_enabled 单独报告元数据写开关，不表示完成 S0 或开放真实执行。
 
 ## 认证与权限
 
@@ -34,7 +36,7 @@
 
 错误体为 ApiError：code 和中文 message。409 区分 CONFLICT（幂等内容冲突）和 LEASE_REJECTED（执行权无效）；422 不回显非法字段或输入值；数据库错误返回 503 / DATABASE_UNAVAILABLE，不输出 SQL 或连接信息。对象存储验证失败返回 503 / STORAGE_UNAVAILABLE，且不提交终态。
 
-Python SDK 的 HubClient 提供 create_job、get_job、claim、renew、finish，以及异步上下文管理。token 使用 SecretStr 传入。空队列转换为 None；HubError 提供 status_code 和经契约校验的 code。SDK 不跟随重定向，不把原始错误响应、认证头或网络异常消息附加到异常。
+Python SDK 的 HubClient 提供 create_job、cancel_job、cancel_trial、get_job、claim、renew、finish，以及异步上下文管理。token 使用 SecretStr 传入。空队列转换为 None；HubError 提供 status_code 和经契约校验的 code。SDK 不跟随重定向，不把原始错误响应、认证头或网络异常消息附加到异常。
 
 ## OpenAPI 与前端类型
 

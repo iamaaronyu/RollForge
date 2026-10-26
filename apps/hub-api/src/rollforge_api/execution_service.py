@@ -198,6 +198,61 @@ class ExecutionService:
             )
             return await self.view(session, job)
 
+    async def _cancel_trial(self, session: AsyncSession, trial: Trial) -> None:
+        if trial.status in {TrialStatus.PENDING, TrialStatus.QUEUED}:
+            self.trial_state(trial, TrialStatus.CANCELLED)
+            return
+        if trial.status != TrialStatus.RUNNING:
+            return
+        execution = await session.scalar(
+            select(Execution)
+            .where(
+                Execution.trial_id == trial.id,
+                Execution.fencing_token == trial.fencing_token,
+            )
+            .with_for_update()
+        )
+        if execution is None or execution.status != ExecutionStatus.RUNNING:
+            raise LeaseRejected("Current execution is not cancellable")
+        # 取消会撤销租约；Worker 下次续租失败后会终止 Runtime 并运行清理。
+        self.execution_state(execution, ExecutionStatus.CANCELLED)
+        self.trial_state(trial, TrialStatus.CANCELLED)
+
+    async def cancel_trial(self, job_id: UUID, trial_id: UUID, owner_id: UUID) -> TrialView | None:
+        async with self.sessions.begin() as session:
+            exists = await session.scalar(
+                select(Job.id).where(Job.id == job_id, Job.owner_id == owner_id)
+            )
+            if exists is None:
+                return None
+            trial = await session.scalar(
+                select(Trial).where(Trial.id == trial_id, Trial.job_id == job_id).with_for_update()
+            )
+            if trial is None:
+                return None
+            await self._cancel_trial(session, trial)
+            return (await self.trial_views(session, [trial]))[0]
+
+    async def cancel_job(self, job_id: UUID, owner_id: UUID) -> JobView | None:
+        async with self.sessions.begin() as session:
+            job = await session.scalar(
+                select(Job).where(Job.id == job_id, Job.owner_id == owner_id)
+            )
+            if job is None:
+                return None
+            # 与 claim/finish/recovery 保持 Trial → Execution 锁顺序，避免死锁。
+            trials = list(
+                await session.scalars(
+                    select(Trial)
+                    .where(Trial.job_id == job_id)
+                    .order_by(Trial.attempt_index)
+                    .with_for_update()
+                )
+            )
+            for trial in trials:
+                await self._cancel_trial(session, trial)
+            return await self.view(session, job)
+
     async def list_jobs(self, owner_id: UUID, limit: int = 20, after: UUID | None = None):
         trial_count = (
             select(func.count(Trial.id))

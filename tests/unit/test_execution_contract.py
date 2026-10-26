@@ -44,3 +44,9 @@ def test_zero_score_is_valid_and_expired_execution_cannot_reopen():
     assert result.rewards == {"reward": 0}
     with pytest.raises(ValueError):
         validate_execution_transition(ExecutionStatus.EXPIRED, ExecutionStatus.RUNNING)
+
+
+def test_running_execution_can_be_cancelled_but_terminal_execution_cannot_reopen():
+    validate_execution_transition(ExecutionStatus.RUNNING, ExecutionStatus.CANCELLED)
+    with pytest.raises(ValueError):
+        validate_execution_transition(ExecutionStatus.CANCELLED, ExecutionStatus.RUNNING)

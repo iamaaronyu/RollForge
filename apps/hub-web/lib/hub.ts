@@ -3,6 +3,7 @@ import type { components } from "./api-types";
 
 export type JobList = components["schemas"]["JobList"];
 export type JobView = components["schemas"]["JobView"];
+export type TrialView = components["schemas"]["TrialView"];
 export type ExecutionList = components["schemas"]["ExecutionList"];
 export type TrialList = components["schemas"]["TrialList"];
 export type TrajectoryView = components["schemas"]["TrajectoryView"];
@@ -20,7 +21,7 @@ export class HubProblem extends Error {
 }
 export const validId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 export const experimental = () => process.env.ROLLFORGE_WEB_ALLOW_EXPERIMENTAL_RUNS === "true";
-async function request(path: string, body?: unknown): Promise<Response> {
+async function request(path: string, body?: unknown, method?: "GET" | "POST"): Promise<Response> {
   const token = process.env.ROLLFORGE_WEB_USER_TOKEN;
   if (!token) throw new HubProblem(401);
   let response: Response;
@@ -29,7 +30,7 @@ async function request(path: string, body?: unknown): Promise<Response> {
     if (base.username || base.password || base.search || base.hash || base.pathname !== "/" ||
       !(base.protocol === "https:" || (base.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(base.hostname)))) throw new Error();
     response = await fetch(new URL(path, base), {
-      method: body === undefined ? "GET" : "POST",
+      method: method ?? (body === undefined ? "GET" : "POST"),
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store", redirect: "error", signal: AbortSignal.timeout(10000),
@@ -40,6 +41,10 @@ async function request(path: string, body?: unknown): Promise<Response> {
 }
 export async function hub<T>(path: string, body?: unknown): Promise<T> {
   const response = await request(path, body);
+  try { return await response.json() as T; } catch { throw new HubProblem(502); }
+}
+export async function hubPost<T>(path: string): Promise<T> {
+  const response = await request(path, undefined, "POST");
   try { return await response.json() as T; } catch { throw new HubProblem(502); }
 }
 export async function hubText(path: string): Promise<string> {

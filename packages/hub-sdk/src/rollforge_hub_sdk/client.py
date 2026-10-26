@@ -113,6 +113,14 @@ class HubClient:
         response = await self._request("GET", f"/api/v1/jobs/{job_id}")
         return self._decode(response, JobView)
 
+    async def cancel_job(self, job_id: UUID) -> JobView:
+        response = await self._request("POST", f"/api/v1/jobs/{job_id}/cancel")
+        return self._decode(response, JobView)
+
+    async def cancel_trial(self, job_id: UUID, trial_id: UUID) -> TrialView:
+        response = await self._request("POST", f"/api/v1/jobs/{job_id}/trials/{trial_id}/cancel")
+        return self._decode(response, TrialView)
+
     async def list_jobs(self, *, limit: int = 20, after: UUID | None = None) -> JobList:
         params = {"limit": limit}
         if after is not None:

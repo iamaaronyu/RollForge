@@ -1,6 +1,7 @@
 import hashlib
 import json
 import secrets
+from asyncio import gather
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
@@ -457,3 +458,65 @@ async def test_user_cannot_create_runnable_job_with_unapproved_snapshot(engine):
         with pytest.raises(HubError) as error:
             await sdk["user"].create_job(JobCreateRequest(job_id=uuid4(), snapshot=snapshot))
         assert error.value.status_code == 403
+
+
+async def test_cancel_job_is_idempotent_scoped_and_cancels_queued_trials(engine):
+    async with clients(engine) as (_, sdk, _, identities, _):
+        body = job_request().model_copy(update={"trial_count": 3})
+        job = await sdk["user"].create_job(body)
+        cancelled = await sdk["user"].cancel_job(job.job_id)
+        assert cancelled.terminal_trial_count == 3
+        trials = await sdk["user"].list_trials(job.job_id, limit=10)
+        assert [trial.status for trial in trials.items] == [TrialStatus.CANCELLED] * 3
+        assert await sdk["user"].cancel_job(job.job_id) == cancelled
+
+        with pytest.raises(HubError) as error:
+            await sdk["other_user"].cancel_job(job.job_id)
+        assert error.value.status_code == 404
+        with pytest.raises(HubError) as error:
+            await sdk["worker"].cancel_job(job.job_id)
+        assert error.value.status_code == 403
+
+    async with clients(engine, writes=False) as (_, sdk, _, _, _):
+        # A fresh job is not needed to prove the shared write gate rejects the route.
+        with pytest.raises(HubError) as error:
+            await sdk["user"].cancel_job(uuid4())
+        assert error.value.status_code == 503
+
+
+async def test_cancel_running_trial_revokes_worker_lease_and_preserves_siblings(engine):
+    async with clients(engine) as (_, sdk, _, _, _):
+        job = await sdk["user"].create_job(job_request().model_copy(update={"trial_count": 2}))
+        lease = await sdk["worker"].claim(ClaimRequest(lease_seconds=30))
+        cancelled = await sdk["user"].cancel_trial(job.job_id, lease.trial_id)
+        assert cancelled.status == TrialStatus.CANCELLED
+        with pytest.raises(HubError) as error:
+            await sdk["worker"].renew(RenewRequest(lease=reference(lease)))
+        assert error.value.status_code == 409
+        with pytest.raises(HubError) as error:
+            await sdk["worker"].finish(commit(job, lease))
+        assert error.value.status_code == 409
+
+        executions = await sdk["user"].list_executions(job.job_id)
+        assert len(executions.items) == 1
+        assert executions.items[0].status == ExecutionStatus.CANCELLED
+        assert (await sdk["worker"].recover_expired()).recovered_count == 0
+        next_lease = await sdk["worker"].claim()
+        assert next_lease.trial_id != lease.trial_id
+        assert (await sdk["user"].get_job(job.job_id)).terminal_trial_count == 1
+
+
+async def test_cancel_and_finish_race_has_one_terminal_winner(engine):
+    async with clients(engine) as (_, sdk, _, _, _):
+        job = await sdk["user"].create_job(job_request())
+        lease = await sdk["worker"].claim()
+        cancellation, completion = await gather(
+            sdk["user"].cancel_job(job.job_id),
+            sdk["worker"].finish(commit(job, lease)),
+            return_exceptions=True,
+        )
+        assert sum(not isinstance(item, Exception) for item in (cancellation, completion)) == 1
+        rejected = cancellation if isinstance(cancellation, Exception) else completion
+        assert isinstance(rejected, HubError) and rejected.status_code == 409
+        final = await sdk["user"].get_job(job.job_id)
+        assert final.trial.status in {TrialStatus.CANCELLED, TrialStatus.COMPLETED}

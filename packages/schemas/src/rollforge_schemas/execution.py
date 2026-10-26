@@ -56,6 +56,7 @@ class ExecutionStatus(StrEnum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     EXPIRED = "EXPIRED"
+    CANCELLED = "CANCELLED"
 
 
 class FailureReason(StrEnum):
