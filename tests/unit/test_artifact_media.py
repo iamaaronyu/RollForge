@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
-from rollforge_api.artifacts import read_artifact_media
+from rollforge_api.artifacts import read_artifact_download, read_artifact_media
 from rollforge_api.routes import ApiFailure
 from rollforge_schemas.api import ErrorCode
 
@@ -86,5 +86,41 @@ def test_media_read_enforces_manifest_type_and_size(monkeypatch, path, size, sta
         ErrorCode.NOT_FOUND,
         ErrorCode.INVALID_REQUEST,
     }
+    assert store.reads == []
+    assert store.closed
+
+
+def test_artifact_download_uses_manifest_digest_and_safe_filename(monkeypatch):
+    record = SimpleNamespace(path="nested/实验结果.zip", digest="sha256:expected", size=14)
+    store = install_fake_store(monkeypatch, [record])
+
+    data, disposition = read_artifact_download(
+        fake_settings(),
+        SimpleNamespace(prefix="jobs/job/execution"),
+        SimpleNamespace(manifest_digest="sha256:manifest"),
+        record.path,
+    )
+
+    assert data == b"verified media"
+    assert disposition == "attachment; filename*=UTF-8''%E5%AE%9E%E9%AA%8C%E7%BB%93%E6%9E%9C.zip"
+    assert store.reads == [("jobs/job/execution/files/nested/实验结果.zip", "sha256:expected", 14)]
+    assert store.closed
+
+
+def test_artifact_download_rejects_files_larger_than_object_limit(monkeypatch):
+    from rollforge_object_store.s3 import MAX_OBJECT_BYTES
+
+    record = SimpleNamespace(path="huge.bin", digest="sha256:expected", size=MAX_OBJECT_BYTES + 1)
+    store = install_fake_store(monkeypatch, [record])
+
+    with pytest.raises(ApiFailure, match="64 MiB") as error:
+        read_artifact_download(
+            fake_settings(),
+            SimpleNamespace(prefix="scope"),
+            SimpleNamespace(manifest_digest="sha256:manifest"),
+            record.path,
+        )
+
+    assert error.value.status == 413
     assert store.reads == []
     assert store.closed

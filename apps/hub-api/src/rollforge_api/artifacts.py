@@ -3,13 +3,14 @@
 import asyncio
 from pathlib import PurePosixPath
 from typing import Annotated
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import Query, Request
 from fastapi.responses import PlainTextResponse, Response
 from rollforge_harbor_adapter.trajectory import UnsupportedTrajectory, project_trajectory
 from rollforge_object_store.bundle import BundlePublisher
-from rollforge_object_store.s3 import ObjectStoreError, S3ObjectStore
+from rollforge_object_store.s3 import MAX_OBJECT_BYTES, ObjectStoreError, S3ObjectStore
 from rollforge_schemas.api import ArtifactIndex, ErrorCode
 from rollforge_schemas.trajectory import TrajectoryView
 
@@ -103,6 +104,35 @@ def read_artifact_media(settings, scope, result, path: str) -> tuple[bytes, str]
         objects.close()
 
 
+def read_artifact_download(settings, scope, result, path: str) -> tuple[bytes, str]:
+    """Return one bounded, manifest-listed file after full digest verification."""
+    try:
+        objects = S3ObjectStore(
+            settings.object_storage_endpoint,
+            settings.object_storage_bucket,
+            settings.object_storage_access_key,
+            settings.object_storage_secret_key,
+            allow_local_http=settings.object_storage_allow_local_http,
+        )
+    except ValueError:
+        raise ObjectStoreError("对象存储配置无效") from None
+    try:
+        manifest = BundlePublisher(objects, sensitive_values=()).inspect(
+            scope, result.manifest_digest
+        )
+        file = next((item for item in manifest.files if item.path == path), None)
+        if file is None:
+            raise ApiFailure(404, ErrorCode.NOT_FOUND, "产物不存在")
+        if file.size > MAX_OBJECT_BYTES:
+            raise ApiFailure(413, ErrorCode.INVALID_REQUEST, "产物超过 64 MiB 下载上限")
+        data = objects.read_verified(scope.prefix + "/files/" + file.path, file.digest, file.size)
+        filename = PurePosixPath(file.path).name
+        disposition = "attachment; filename*=UTF-8''" + quote(filename, safe="")
+        return data, disposition
+    finally:
+        objects.close()
+
+
 @router.get(
     "/jobs/{job_id}/executions/{execution_id}/artifacts",
     response_model=ArtifactIndex,
@@ -175,6 +205,47 @@ async def artifact_media(
             "X-Content-Type-Options": "nosniff",
             "Content-Security-Policy": "default-src 'none'",
             "Cross-Origin-Resource-Policy": "same-origin",
+        },
+    )
+
+
+@router.get(
+    "/jobs/{job_id}/executions/{execution_id}/artifact-download",
+    tags=["artifacts"],
+    operation_id="artifact_download",
+    response_class=Response,
+    responses={
+        200: {
+            "description": "经 Manifest 与摘要验证的文件",
+            "content": {
+                "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
+            },
+        },
+        413: {"description": "产物超过下载上限"},
+    },
+)
+async def artifact_download(
+    job_id: UUID,
+    execution_id: UUID,
+    identity: User,
+    store: Store,
+    request: Request,
+    path: Annotated[str, Query(min_length=1, max_length=768)],
+):
+    accepted = await store.accepted_execution(job_id, execution_id, identity.subject_id)
+    if accepted is None:
+        raise ApiFailure(404, ErrorCode.NOT_FOUND, "执行产物不存在")
+    data, disposition = await asyncio.to_thread(
+        read_artifact_download, request.app.state.settings, *accepted, path
+    )
+    return Response(
+        data,
+        media_type="application/octet-stream",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'",
+            "Content-Disposition": disposition,
         },
     )
 

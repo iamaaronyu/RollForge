@@ -21,7 +21,7 @@ export class HubProblem extends Error {
 }
 export const validId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 export const experimental = () => process.env.ROLLFORGE_WEB_ALLOW_EXPERIMENTAL_RUNS === "true";
-async function request(path: string, body?: unknown, method?: "GET" | "POST"): Promise<Response> {
+async function request(path: string, body?: unknown, method?: "GET" | "POST", timeoutMs = 10000): Promise<Response> {
   const token = process.env.ROLLFORGE_WEB_USER_TOKEN;
   if (!token) throw new HubProblem(401);
   let response: Response;
@@ -33,7 +33,7 @@ async function request(path: string, body?: unknown, method?: "GET" | "POST"): P
       method: method ?? (body === undefined ? "GET" : "POST"),
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
-      cache: "no-store", redirect: "error", signal: AbortSignal.timeout(10000),
+      cache: "no-store", redirect: "error", signal: AbortSignal.timeout(timeoutMs),
     });
   } catch { throw new HubProblem(503); }
   if (!response.ok) throw new HubProblem(response.status);
@@ -67,6 +67,9 @@ export async function hubMedia(path: string): Promise<{ dataUrl: string; mediaTy
     if (error instanceof HubProblem) throw error;
     throw new HubProblem(502);
   }
+}
+export async function hubArtifactDownload(path: string): Promise<Response> {
+  return request(path, undefined, "GET", 60000);
 }
 export function message(error: unknown): string {
   return error instanceof HubProblem ? error.message : "服务暂不可用，请稍后重试。";

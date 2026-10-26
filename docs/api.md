@@ -63,6 +63,8 @@ make check 和 CI 检查实际 API 与导出文件一致，前端 typecheck 检�
 
 `GET .../artifact-media?path=<Manifest 中相对文件路径>` 仅为图片和音频提供最多 8 MiB 的已验摘要内容，执行所有权、文件清单和摘要均在 Hub 复核；不支持的扩展名为 415，超限为 413。服务不接受 URL/对象键，也不签发对象存储访问地址。
 
+`GET .../artifact-download?path=<Manifest 中相对文件路径>` 下载一个已接受执行的产物，最大 64 MiB。服务先核对 Manifest 精确路径，再完整读取并校验大小与 SHA256，以 `application/octet-stream` 和安全附件文件名返回；缺失文件为 404，超限为 413。Web 控制台通过同源代理转发，Hub token 和对象存储地址不会进入浏览器。
+
 `GET .../trajectory` 返回共享 TrajectoryView（projection_version=2），投影已接受执行的固定主轨迹与有界内嵌子轨迹。权限及摘要核验与文本预览一致；媒体引用只返回与接受 Manifest 匹配的文件路径，外部 URL/主机路径和外部子轨迹位置不返回。未知 ATIF 版本、非连续步骤、无效调用引用、重复子轨迹 ID、超过 1000 个单轨迹步骤或总投影预算返回 422。不会将解析错误中的原始内容返回客户端。
 
 注册表提供 USER 的资产列表、版本创建/读取/分页接口，写入受现有控制面开关约束；版本不可修改，注册不授予执行权限。网页入口见 `/registry`，详细契约和摘要语义见 [Registry](registry.md)。

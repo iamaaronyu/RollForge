@@ -71,8 +71,8 @@ export default async function Artifacts({ params, searchParams }: {
     </section>
     {media && <section className="panel"><h2 className="identifier">{media}</h2>{mediaProblem ? <p role="alert">{mediaProblem}</p> : mediaPreview?.mediaType.startsWith("image/") ? <img src={mediaPreview.dataUrl} alt={`执行附件 ${media}`} style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain" }} /> : mediaPreview && <audio controls preload="none" src={mediaPreview.dataUrl}>浏览器不支持音频播放。</audio>}<p className="note">媒体由 Hub 按执行所有权、Manifest 清单、内容摘要和 8 MiB 上限验证后提供；网页不会获得对象存储凭证。</p></section>}
     <section className="panel"><h2>文件索引</h2><div className="table-wrap"><table><thead><tr><th>文件</th><th>字节</th><th>预览</th></tr></thead><tbody>
-      {index.files.map(item => <tr key={item.path}><td className="identifier">{item.path}</td><td>{item.size}</td><td>{item.size <= 1024 * 1024 ? <Link href={`${page}?file=${encodeURIComponent(item.path)}`}>打开</Link> : "超过预览上限"}</td></tr>)}
-    </tbody></table></div><p className="note">仅展示已接受结果的文件。预览前核对内容摘要，不直接提供存储凭证或对象地址。</p></section>
+      {index.files.map(item => <tr key={item.path}><td className="identifier">{item.path}</td><td>{item.size}</td><td>{item.size <= 1024 * 1024 && <Link href={`${page}?file=${encodeURIComponent(item.path)}`}>文本预览</Link>}{item.size <= 64 * 1024 * 1024 ? <>{item.size <= 1024 * 1024 ? " · " : ""}<a href={`/api/jobs/${jobId}/executions/${executionId}/artifact?path=${encodeURIComponent(item.path)}`}>下载</a></> : item.size > 1024 * 1024 ? "超过预览和下载上限" : null}</td></tr>)}
+    </tbody></table></div><p className="note">仅展示已接受结果的文件。下载由 Hub 复核所有权、Manifest 和内容摘要，单文件最多 64 MiB；浏览器不会获得对象存储凭证或对象地址。</p></section>
     {file && <section className="panel"><h2 className="identifier">{file}</h2>{problem ? <p role="alert">{problem}</p> : <pre className="artifact-text">{content}</pre>}<p className="note">按原始 UTF-8 文本显示，最多 1 MiB。usage / reasoning 缺失时保持未知，不生成补值。</p></section>}
   </main>;
 }

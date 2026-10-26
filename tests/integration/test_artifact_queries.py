@@ -81,11 +81,53 @@ async def test_preview_bounds_plaintext_and_cross_execution(engine, server, stor
     (output / "large.txt").write_bytes(b"x" * (1024 * 1024 + 1))
     (output / "binary.dat").write_bytes(b"\xff\x00")
     (output / "oversized.png").write_bytes(b"x" * (8 * 1024 * 1024 + 1))
+    (output / "nested").mkdir()
+    (output / "nested/验证样例.zip").write_bytes(b"synthetic archive bytes")
     async with clients(engine) as (app, sdk, raw, _ids, tokens):
         storage_settings(app, server, store)
         scope, _result = await publish(engine, server, store, output, sdk)
         base = f"/api/v1/jobs/{scope.job_id}/executions/{scope.execution_id}"
         headers = {"Authorization": "Bearer " + tokens["user"]}
+        download = await raw.get(
+            base + "/artifact-download", headers=headers, params={"path": "nested/验证样例.zip"}
+        )
+        assert download.status_code == 200
+        assert download.content == b"synthetic archive bytes"
+        assert download.headers["content-type"] == "application/octet-stream"
+        assert "attachment; filename*=UTF-8''" in download.headers["content-disposition"]
+        assert download.headers["x-content-type-options"] == "nosniff"
+        assert download.headers["cache-control"] == "no-store"
+        assert (
+            await raw.get(
+                base + "/artifact-download",
+                headers={"Authorization": "Bearer " + tokens["other_user"]},
+                params={"path": "nested/验证样例.zip"},
+            )
+        ).status_code == 404
+        assert (
+            await raw.get(
+                base + "/artifact-download",
+                headers={"Authorization": "Bearer " + tokens["worker"]},
+                params={"path": "nested/验证样例.zip"},
+            )
+        ).status_code == 403
+        assert (
+            await raw.get(
+                base + "/artifact-download", headers=headers, params={"path": "../private"}
+            )
+        ).status_code == 404
+        store.client.put_object(
+            Bucket=store.bucket,
+            Key=scope.prefix + "/files/nested/验证样例.zip",
+            Body=b"tampered archive",
+        )
+        assert (
+            await raw.get(
+                base + "/artifact-download",
+                headers=headers,
+                params={"path": "nested/验证样例.zip"},
+            )
+        ).status_code == 503
         for path, status in [("large.txt", 413), ("binary.dat", 422)]:
             assert (
                 await raw.get(base + "/artifact-text", headers=headers, params={"path": path})

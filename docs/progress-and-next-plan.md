@@ -6,7 +6,7 @@
 
 RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → PostgreSQL 执行权 → Worker → 固定 Harbor/E2B → Claude Code → 受限 DeepSeek 会话 → 独立 Verifier → MinIO 原始产物 → Hub 终态。S0 在可信局域网、审核任务、并发 1 范围完成；S1 单 Trial 核心及第六个最小业务页面已实现；页面用合成数据完成真实浏览器/数据库往返，执行侧已有独立真实模型验收。
 
-当前是可复现的实验执行底座。网页已支持受控任务创建、列表、评分、执行历史、用户取消，以及 Registry 资产登记、版本浏览和基于私有 revision 的 Job 创建；Run 仍只能匹配部署者审核目录。Job 可创建 1–1000 个确定性 Trial 并分页查看。单进程有界持续调度、FIFO 队列和租约恢复已实现；双 Worker Harbor/E2B 链、平台 Worker 多 Trial 主链及持久网关部署仍需验收。Registry API/UI、网关预算、多 Trial 验收工具及取消 API 已由真实 PostgreSQL 专项测试、类型检查和生产构建验证。2026-10-26 最新完整 `make check` 为 183 passed、51 skipped，前端类型检查和生产构建通过；`make runtime-check` 为 9 passed。取消切片另有 3 项真实 PostgreSQL API/竞争测试与 1 项迁移往返/元数据比对通过。跳过项包括未提供真实 PostgreSQL/MinIO 环境及历史 Harbor 轨迹样本，不计作真实存储或运行验收。Linux 主机可经用户指定的 Tailscale 地址访问；详细部署与运行证据见专项验收记录。正式执行入口保持关闭。
+当前是可复现的实验执行底座。网页已支持受控任务创建、列表、评分、执行历史、用户取消，以及 Registry 资产登记、版本浏览和基于私有 revision 的 Job 创建；Run 仍只能匹配部署者审核目录。Job 可创建 1–1000 个确定性 Trial 并分页查看。单进程有界持续调度、FIFO 队列和租约恢复已实现；双 Worker Harbor/E2B 链、平台 Worker 多 Trial 主链及持久网关部署仍需验收。Registry API/UI、网关预算、多 Trial 验收工具及取消 API 已由真实 PostgreSQL 专项测试、类型检查和生产构建验证。2026-10-26 最新完整 `make check` 为 185 passed、51 skipped，前端类型检查和生产构建通过；`make runtime-check` 为 9 passed。取消切片另有 3 项真实 PostgreSQL API/竞争测试与 1 项迁移往返/元数据比对通过。跳过项包括未提供真实 PostgreSQL/MinIO 环境及历史 Harbor 轨迹样本，不计作真实存储或运行验收。Linux 主机可经用户指定的 Tailscale 地址访问；详细部署与运行证据见专项验收记录。正式执行入口保持关闭。
 
 ## 已完成的开发项
 
@@ -97,7 +97,7 @@ Registry API 与版本发现/绑定页面已完成，真实 2-Trial 验收脚本
 
 本批页面及查询验收见 [页面记录](validation/2026-10-06-s1-web.md)、[Registry 页面记录](validation/2026-10-26-registry-ui.md)；多 Trial 交付边界见 [多 Trial 验收记录](validation/2026-10-26-multitrial.md)。后续按 [逐步实施计划](next-implementation.md) 推进。
 
-第二批已实现受控产物索引及 1 MiB 文本预览，真实 PostgreSQL/MinIO 权限、越界、篡改与预览边界通过；详见 [基础 Viewer 验收](validation/2026-10-06-viewer.md)。第三批主轨迹版本化投影与中文时间线已实现，159 项全量测试通过；详见 [时间线验收](validation/2026-10-06-trajectory.md)。本轮新增 ATIF v1.8 图片/音频元数据、有界内嵌子轨迹投影及 Hub 验证后的 8 MiB 媒体预览；媒体仅返回与接受的 Manifest 文件清单精确匹配的附件路径，外部 URL/主机路径和子轨迹位置不会被加载或泄露。大文件下载、外部子轨迹及统计聚合仍待开发，详见 [多模态附件验收](validation/2026-10-26-multimodal-viewer.md)。
+第二批已实现受控产物索引及 1 MiB 文本预览，真实 PostgreSQL/MinIO 权限、越界、篡改与预览边界通过；详见 [基础 Viewer 验收](validation/2026-10-06-viewer.md)。第三批主轨迹版本化投影与中文时间线已实现；详见 [时间线验收](validation/2026-10-06-trajectory.md)。ATIF v1.8 图片/音频元数据、有界内嵌子轨迹投影和 Hub 验证后的 8 MiB 媒体预览已实现；媒体只绑定接受 Manifest 中的路径。新增受控 64 MiB 文件下载及同源 Web 代理，并补充权限、路径和篡改集成断言；当前本机没有 PostgreSQL/MinIO，因此该 API 的真实存储验收仍待执行。外部子轨迹及统计聚合仍待开发，详见[多模态附件验收](validation/2026-10-26-multimodal-viewer.md)与[下载验收](validation/2026-10-26-artifact-download.md)。
 
 
 2026-10-07 第四批：三类不可变资产版本注册表、迁移、USER API 与 SDK 已实现；注册表尚未接入执行快照或批量展开，不改变单 Trial 主链。数据库竞争、冻结、权限及带数据迁移回退通过，详见 [Registry 说明](registry.md) 和 [验收记录](validation/2026-10-07-registry.md)。下一切片为多 Trial Job 契约、迁移与确定性展开。
