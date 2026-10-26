@@ -26,12 +26,51 @@ sudo install -d -o rollforge -g rollforge -m 0700 /var/lib/rollforge/private /va
 sudo install -d -o root -g root -m 0755 /opt/rollforge
 ```
 
-将审查过的仓库检出到 `/opt/rollforge`，并确认目录对 `rollforge` 用户可读、不可写；随后用该版本锁文件安装依赖：
+先准备系统级构建工具。unit 使用 `ProtectHome=true`，因此 Node.js、npm 和 uv 不能只安装在 `tyu` 的 nvm 或 `~/.local/bin` 中：
 
 ```sh
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl git
+
+# Node.js 22 系统级安装，为生产构建和 systemd 服务提供 /usr/bin/node、npm。
+curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
+sudo -E bash /tmp/nodesource_setup.sh
+sudo apt-get install -y nodejs
+rm -f /tmp/nodesource_setup.sh
+
+# uv 安装到系统 PATH，避免 sudo secure_path 找不到用户目录中的 uv。
+curl -LsSf https://astral.sh/uv/install.sh -o /tmp/uv-install.sh
+sudo env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh /tmp/uv-install.sh
+rm -f /tmp/uv-install.sh
+
+/usr/bin/node --version
+/usr/bin/npm --version
+/usr/local/bin/uv --version
+```
+
+前面的目录准备命令会在 `/opt/rollforge` 下创建空的 Web cache 占位目录。先只删除这些空目录，再把 GitHub 主分支检出到该路径；若 `rmdir` 失败，表示目录内已有文件，应先检查内容，不要强行删除：
+
+```sh
+set -e
+sudo rmdir \
+  /opt/rollforge/apps/hub-web/.next/cache \
+  /opt/rollforge/apps/hub-web/.next \
+  /opt/rollforge/apps/hub-web \
+  /opt/rollforge/apps \
+  /opt/rollforge
+sudo git clone --branch main --single-branch \
+  https://github.com/iamaaronyu/RollForge.git /opt/rollforge
+```
+
+确认 checkout 后，使用 system-wide uv，并将 uv 管理的 Python 固定在 `ProtectHome=true` 可读取的 `/opt/rollforge-python`：
+
+```sh
+sudo install -d -o root -g root -m 0755 /opt/rollforge-python
 cd /opt/rollforge
-sudo uv sync --all-packages --locked
-sudo uv sync --project integration/harbor-runtime --python 3.12 --locked
+sudo env UV_PYTHON_INSTALL_DIR=/opt/rollforge-python \
+  /usr/local/bin/uv sync --all-packages --locked --python 3.12
+sudo env UV_PYTHON_INSTALL_DIR=/opt/rollforge-python \
+  /usr/local/bin/uv sync --project integration/harbor-runtime --python 3.12 --locked
 sudo npm --prefix apps/hub-web ci
 sudo npm --prefix apps/hub-web run build
 sudo chown -R root:root /opt/rollforge
@@ -39,7 +78,7 @@ sudo chmod -R go-w /opt/rollforge
 sudo install -d -o rollforge -g rollforge -m 0750 /opt/rollforge/apps/hub-web/.next/cache
 ```
 
-Next.js 生产服务要求系统级 Node.js 20.9 或更新版本，路径为 `/usr/bin/node`。不要依赖登录用户的 nvm 路径，因为 unit 使用 `ProtectHome=true`。
+Next.js 生产服务要求系统级 Node.js 20.9 或更新版本；以上安装 Node.js 22，路径应为 `/usr/bin/node`。不要依赖登录用户的 nvm 路径，因为 unit 使用 `ProtectHome=true`。uv Runtime venv 使用的 Python 位于 `/opt/rollforge-python`，不可放在 `/root/.local/share/uv`，否则服务的 `ProtectHome=true` 会阻止访问。
 
 ## 独立数据服务与部署预检
 
