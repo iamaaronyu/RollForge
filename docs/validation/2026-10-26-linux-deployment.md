@@ -29,3 +29,11 @@
 - 代码验证：`make check` 为 169 passed、51 skipped；`make runtime-check` 为 9 passed。跳过项是需要额外真实 PostgreSQL、对象存储或运行数据的集成验收。
 
 仍需完成：对象存储和 PostgreSQL 的独立备份及隔离环境读回演练；受限模型网关的已认证调用、预算与过期/撤销验证；整机重启后确认服务自恢复；然后在明确预算的合成任务下进行单 Trial Worker→Hub→Harbor/E2B→模型→对象存储全链及中断恢复验收。上述真实任务未验收前，三个写入/执行开关继续关闭。Silo 镜像基于 AGPLv3 社区分支；仓库尚未确定自身许可证，发布或再分发前需先完成许可证审查。
+
+### 预算与 Trial 就绪只读复核
+
+不发起新模型请求的情况下，检查 Mac 网关私密目录为 0700、配置与 SQLite 账本为 0600；会话有效，20 次预算已使用 1 次。远程 Hub Registry 以只读事务核对，TASK、AGENT、MODEL 资产和 Revision 均为 0，Task 归档也为 0，因此没有可用于受控 Trial 的已审核输入。
+
+新增真实临时 SQLite 文件回归：过期会话不建预算记录；撤销会话后拒绝后续授权且计数不再增加；并发竞争 20 次仅授权 3 次；网关重建后预算仍保留。恢复测试另覆盖旧快照计数 4、当前账本计数 9 的情况，恢复后仍为 9，并保留只存在于当前账本的 token 行。以上是本地临时 SQLite 验证，不是线上账本备份/恢复演练。
+
+复验 `make check`：170 passed、51 skipped；Python lint/格式、OpenAPI、Web 类型与构建通过。尚未创建或上传 Registry Revision/归档，也未执行 Worker、Harbor/E2B 或额外模型调用。

@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import runpy
+import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -50,6 +51,7 @@ def test_expired_session_rejected(config):
     data["sessions"][SESSION_HASH]["expires_at"] = time.time() - 1
     config.write_text(json.dumps(data))
     assert Sessions(config).authorize("synthetic-session", "deepseek-flash") is None
+    assert not config.with_suffix(".sqlite3").exists()
 
 
 def test_request_budget_is_atomic_under_concurrency(config):
@@ -81,6 +83,10 @@ def test_revocation_is_seen_without_restart(config):
     data["sessions"] = {}
     config.write_text(json.dumps(data))
     assert sessions.authorize("synthetic-session", "deepseek-flash") is None
+    with sqlite3.connect(config.with_suffix(".sqlite3")) as connection:
+        assert connection.execute(
+            "SELECT used_requests FROM session_usage WHERE token_sha256 = ?", (SESSION_HASH,)
+        ).fetchone() == (1,)
 
 
 def test_shared_readable_config_rejected(config):

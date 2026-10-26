@@ -55,6 +55,19 @@ def test_budget_restore_merges_counters_monotonically_and_keeps_newer_rows(tmp_p
     assert live.stat().st_mode & 0o777 == 0o600
 
 
+def test_restoring_older_snapshot_never_resets_consumed_budget(tmp_path):
+    token_hash, later = "9" * 64, "8" * 64
+    live = budget_database(tmp_path / "live-private", {token_hash: 9, later: 2})
+    bundle = tmp_path / "older-bundle"
+    bundle.mkdir(mode=0o700)
+    backup = bundle / "gateway-budget.sqlite3"
+    snapshot_sqlite(budget_database(tmp_path / "old-source-private", {token_hash: 4}), backup)
+
+    restore_budget_database(backup, live, gateway_stopped=True, sessions_revoked=False)
+
+    assert read_budget(live) == {token_hash: 9, later: 2}
+
+
 def test_new_host_budget_restore_requires_all_sessions_revoked(tmp_path):
     token_hash = "d" * 64
     backup = budget_database(tmp_path / "bundle-private", {token_hash: 4})
