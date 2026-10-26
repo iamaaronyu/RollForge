@@ -7,7 +7,7 @@
 | 0 | Linux 临时网络恢复收尾 | 原配置恢复、临时规则为 0、E2B 健康、无 VM | 已复核；专项记录由另一 Agent 独立提交 |
 | 1 | 用户范围 Job 列表与 Execution 历史 | 游标分页、越权拒绝、Retry 历史、无 Worker 身份泄露 | 已实现并通过本轮验收 |
 | 2 | 中文单任务创建与查询页 | 服务端审核目录、token 不进浏览器、真实数据库页面往返 | 已实现并通过本轮验收 |
-| 3 | 受控产物与轨迹 Viewer | 所有权、对象作用域、摘要与大小检查，失败定位 | 基础索引/文本及主轨迹时间线已实现；多模态/子轨迹、搜索与聚合待开发 |
+| 3 | 受控产物与轨迹 Viewer | 所有权、对象作用域、摘要与大小检查，失败定位 | 基础索引/文本、主轨迹时间线及浏览器内文本搜索已实现；大文件下载、多模态/子轨迹与聚合待开发 |
 | 4 | 不可变 Revision Registry 与批量展开 | 版本冻结、幂等展开、Retry 不增加样本数 | API、SDK、资产发现分页及中文 Registry 页已实现；最新版本可选创建审核范围内 Job；真实 PostgreSQL 所有权/摘要/拒绝与分页测试通过。新增真实多 Trial 验收入口；仍待具备运行凭证后完成 Harbor/E2B/模型运行，见 [验收入口说明](multitrial-acceptance.md)、[绑定验收](validation/2026-10-26-registry-binding.md) 与 [页面验收](validation/2026-10-26-registry-ui.md) |
 | 5 | 持续 Worker 与容量调度 | 真双 Worker、背压、重启恢复、有界回收 | 有界常驻 Worker、FIFO 入队、退避、优雅停机与鉴权租约回收已实现；18 项真实 PostgreSQL 执行/API 测试通过；双 Worker Harbor/E2B、进程重启和全局容量验收待完成，见 [验收记录](validation/2026-10-26-scheduler.md) |
 | 6 | 部署与故障演练 | SIGKILL/掉电、限流、备份读回、监控与升级恢复 | Job/Trial 取消 API、网页和 Linux systemd 模板已交付；真实 Sandbox 取消清理、主机安装/恢复、备份读回和监控仍待完成 |
