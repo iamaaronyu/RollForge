@@ -56,12 +56,14 @@ sudo install -m 0644 infra/systemd/rollforge-hub.service /etc/systemd/system/
 sudo install -m 0644 infra/systemd/rollforge-scheduler.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemd-analyze verify /etc/systemd/system/rollforge-hub.service /etc/systemd/system/rollforge-scheduler.service
+sudo -u rollforge /opt/rollforge/.venv/bin/python -m rollforge_scheduler --check
 sudo systemctl enable --now rollforge-hub.service
 ```
 
-Hub 元数据 API 验收通过后，Scheduler 可先以双重关闭配置启动，检查状态和日志不会领取任务：
+Scheduler 在 `ROLLFORGE_SCHEDULER_ENABLED` 或 `ROLLFORGE_WORKER_RUNS_ENABLED` 任一关闭时会拒绝启动，因此准备阶段只运行上面的无执行 `--check`，不要启用 Scheduler unit。完成真实数据库、对象存储、Hub 鉴权、Harbor/E2B、受限模型会话与恢复验收后，再由操作者在 `worker.env` 同时打开两个开关，并启动 Scheduler：
 
 ```sh
+sudo systemctl daemon-reload
 sudo systemctl enable --now rollforge-scheduler.service
 sudo systemctl status rollforge-hub.service rollforge-scheduler.service
 sudo journalctl -u rollforge-hub.service -u rollforge-scheduler.service --since today
