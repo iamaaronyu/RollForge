@@ -6,7 +6,7 @@
 
 - `rollforge-hub.service` 只监听 `127.0.0.1:8000`。`rollforge-web.service` 只监听 loopback，端口由受保护的 `web.env` 配置，仅适合本机或 SSH 隧道访问；当前 Web 使用单一服务端 USER Token，没有多用户登录，不得接公网反向代理。
 - `rollforge-scheduler.service` 以并发 1 运行，适合目前 8 GiB 的实验主机。增加并发或第二个 Scheduler 前，先做容量与 Harbor/E2B 竞争验收。
-- PostgreSQL 是任务和租约的权威状态源；Redis 只用于通知/缓存。对象存储需由 Hub 与 Worker 共同访问。
+- PostgreSQL 是任务和租约的权威状态源；Redis 只用于通知/缓存。对象存储需由 Hub 与 Worker 共同访问。Compose 使用固定 digest 的 PGSTY Silo（MinIO 社区版兼容分支）提供 S3 API；Silo 保留 `MINIO_*` 配置与 MinIO 存储格式，项目的环境变量和端口名仍沿用 MinIO 兼容命名。Silo 是独立社区维护项目，不隶属于 MinIO；升级前需核对其兼容性和安全公告。
 - RollForge Compose 使用 loopback 主机端口 55432、56379、59000、59001，分别映射 PostgreSQL、Redis、MinIO API 和 Console；端口可通过 `ROLLFORGE_*_HOST_PORT` 覆盖。预检会拒绝 E2B 常用的 5432、6379、9000、9001，以及实际已占用的任何配置端口，并校验容器内目标端口和命名卷。不要复用 E2B 的容器、数据库卷或默认监听端口。
 - Worker Runtime 会话单独放在 `/var/lib/rollforge/private/runtime.env`，不能把 Hub token、对象存储密钥或上游 `ANTHROPIC_API_KEY` 放入其中。
 
