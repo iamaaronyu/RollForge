@@ -18,7 +18,7 @@
 | HTTP 鉴权 | 缺失/无效 Token 为 401；Worker 读取用户 Job/Registry 为 403，USER 领取租约为 403；有效 USER 可读取 Job、审核目录和资产列表 |
 | HTTP 关闭开关与参数 | 创建、取消、领取、过期回收均被 WRITES_DISABLED/503 拦截；不存在 Job/Revision 为 404，非法 UUID/分页为 422；OpenAPI 与服务器 checkout 文档一致 |
 | Web | 首页、任务页、Registry 页及静态资源均为 200；不存在 Job 为 404。通过真实浏览器确认任务/Registry 为空且创建/登记按钮禁用，未提交表单 |
-| 凭证边界 | 页面 HTML、11 份已引用 JS/CSS 资源、测试 API 响应及 Hub/Web 当日日志中，未发现实际服务配置/Runtime 中的 Token、存储密钥或密码值；页面未暴露配置的模型网关地址。Runtime 未包含平台存储/Hub/直接上游 Key 字段。这是本次采集范围内的检查，不代表所有历史文件均已扫描 |
+| 凭证边界 | 页面 HTML、9 份已引用 JS/CSS 资源、测试 API 响应及 Hub/Web 当日日志中，未发现实际服务配置/Runtime 中的 Token、存储密钥或密码值；页面未暴露配置的模型网关地址。Runtime 未包含平台存储/Hub/直接上游 Key 字段。这是本次采集范围内的检查，不代表所有历史文件均已扫描 |
 | PostgreSQL 运行库 | 只读事务核对迁移为 0005_cancelled_executions；Job、Trial、Execution、Registry Asset/Revision 均为 0，无运行中 Execution |
 | S3 真实权限 | Worker 上传及读回、Hub 读回成功；Hub 写/删、Worker 删及二者列出所有 bucket 被拒；匿名读被拒；IfNoneMatch 冲突为 412，原字节不变 |
 | Redis | PING、带 TTL 的随机测试 Key 写入/读回通过，测试 Key 已删除；Redis 未充当任务权威状态源 |
