@@ -89,6 +89,7 @@ def deployment_files(tmp_path: Path):
         {
             "ROLLFORGE_WORKER_HUB_URL": "http://127.0.0.1:8000",
             "ROLLFORGE_WORKER_HUB_TOKEN": worker_token,
+            "ROLLFORGE_WORKER_GATEWAY_URL": "https://gateway.example",
             "ROLLFORGE_WORKER_RUNS_ENABLED": "false",
             "ROLLFORGE_SCHEDULER_ENABLED": "false",
             "ROLLFORGE_SCHEDULER_CONCURRENCY": "1",
@@ -169,6 +170,45 @@ def test_preflight_rejects_open_write_or_execution_gates(tmp_path):
         validate_environment(
             repo, compose_env, hub_env, worker_env, web_env, None, node_check=lambda: None
         )
+
+
+@pytest.mark.parametrize(
+    ("target", "key", "value", "message"),
+    [
+        ("hub", "ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED", "true", "控制面写入关闭"),
+        ("worker", "ROLLFORGE_WORKER_RUNS_ENABLED", "true", "Worker 执行关闭"),
+        ("web", "ROLLFORGE_WEB_ALLOW_EXPERIMENTAL_RUNS", "true", "Web 实验写入关闭"),
+    ],
+)
+def test_preflight_rejects_every_open_execution_gate(tmp_path, target, key, value, message):
+    files = deployment_files(tmp_path)
+    repo, compose_env, hub_env, worker_env, web_env = files
+    path = {"hub": hub_env, "worker": worker_env, "web": web_env}[target]
+    values = dict(line.split("=", 1) for line in path.read_text().splitlines())
+    values[key] = value
+    write_env(path, values, 0o640)
+    with pytest.raises(PreflightError, match=message):
+        validate_environment(
+            repo, compose_env, hub_env, worker_env, web_env, None, node_check=lambda: None
+        )
+
+
+def test_preflight_requires_https_gateway_or_explicit_lan_http(tmp_path):
+    files = deployment_files(tmp_path)
+    repo, compose_env, hub_env, worker_env, web_env = files
+    values = dict(line.split("=", 1) for line in worker_env.read_text().splitlines())
+    values["ROLLFORGE_WORKER_GATEWAY_URL"] = "http://192.168.50.20:11441"
+    write_env(worker_env, values, 0o640)
+    with pytest.raises(PreflightError, match="默认要求 HTTPS"):
+        validate_environment(
+            repo, compose_env, hub_env, worker_env, web_env, None, node_check=lambda: None
+        )
+
+    values["ROLLFORGE_WORKER_ALLOW_LAN_HTTP"] = "true"
+    write_env(worker_env, values, 0o640)
+    validate_environment(
+        repo, compose_env, hub_env, worker_env, web_env, None, node_check=lambda: None
+    )
 
 
 def test_preflight_rejects_web_token_not_owned_by_hub_user(tmp_path):

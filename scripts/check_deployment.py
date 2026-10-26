@@ -87,6 +87,28 @@ def validate_loopback_hub_url(value: str, path: Path, field: str):
         raise PreflightError(f"{path} 的 {field} 必须指向本机 Hub 127.0.0.1:8000")
 
 
+def validate_gateway_url(value: str, allow_lan_http: str, path: Path):
+    try:
+        url = urlsplit(value)
+        _port = url.port
+    except ValueError:
+        raise PreflightError(f"{path} 的 ROLLFORGE_WORKER_GATEWAY_URL 无效") from None
+    if (
+        url.scheme not in {"https", "http"}
+        or not url.hostname
+        or url.username is not None
+        or url.password is not None
+        or url.path not in {"", "/"}
+        or url.query
+        or url.fragment
+    ):
+        raise PreflightError("Worker 网关地址必须是无凭证、无路径的 HTTP(S) 根地址")
+    if url.scheme == "http" and allow_lan_http.lower() != "true":
+        raise PreflightError("Worker 网关默认要求 HTTPS；LAN HTTP 必须显式启用")
+    if allow_lan_http.lower() not in {"true", "false"}:
+        raise PreflightError("ROLLFORGE_WORKER_ALLOW_LAN_HTTP 只能是 true 或 false")
+
+
 def validate_object_endpoint(values: dict[str, str], path: Path):
     endpoint = values["ROLLFORGE_OBJECT_STORAGE_ENDPOINT"]
     try:
@@ -387,6 +409,7 @@ def validate_environment(
         (
             "ROLLFORGE_WORKER_HUB_URL",
             "ROLLFORGE_WORKER_HUB_TOKEN",
+            "ROLLFORGE_WORKER_GATEWAY_URL",
             "ROLLFORGE_WORKER_RUNS_ENABLED",
             "ROLLFORGE_SCHEDULER_ENABLED",
             "ROLLFORGE_SCHEDULER_CONCURRENCY",
@@ -399,6 +422,11 @@ def validate_environment(
     )
     validate_loopback_hub_url(
         worker["ROLLFORGE_WORKER_HUB_URL"], worker_path, "ROLLFORGE_WORKER_HUB_URL"
+    )
+    validate_gateway_url(
+        worker["ROLLFORGE_WORKER_GATEWAY_URL"],
+        worker.get("ROLLFORGE_WORKER_ALLOW_LAN_HTTP", "false"),
+        worker_path,
     )
     validate_object_endpoint(worker, worker_path)
     if (

@@ -16,6 +16,8 @@ systemd 模板的基础验证见 [Linux systemd 部署模板验证](validation/2
 
 以下命令需要在目标 Linux 主机以管理员权限执行。先准备已审核的代码目录与固定依赖，再安装服务；不要把真实 `.env` 文件放进 Git checkout。
 
+部署前先确认权限：`sudo -n true` 成功才表示当前自动化会话可执行非交互式管理员操作。目标节点本次检查中该命令失败，因此自动化只做了只读检查，没有安装系统文件、创建账号、改防火墙或启动服务。需要管理员在受控终端执行本节的账号/目录/unit 安装命令；没有管理员协助时，部署保持阻塞。不要把 Docker socket/组权限当作 sudo 替代，也不要用它绕过系统服务与凭证权限边界。仓库目前只验收 systemd 系统级部署模板，尚无 rootless Docker 部署验收路径。
+
 ```sh
 sudo useradd --system --home-dir /var/lib/rollforge --create-home --shell /usr/sbin/nologin rollforge
 sudo install -d -o root -g rollforge -m 0750 /etc/rollforge
@@ -82,7 +84,7 @@ PostgreSQL 与 MinIO 数据保存在独立命名卷 `rollforge_postgres-data` �
 
 Hub 至少需要：`ROLLFORGE_ENVIRONMENT=production`、`ROLLFORGE_DATABASE_URL`、`ROLLFORGE_API_CREDENTIALS` 和对象存储 endpoint/bucket/access key/secret key。USER 与 WORKER 使用不同随机 Token；API credentials 只保存其 SHA256 摘要，原始 Token 由对应客户端保管。Hub 与 Worker 使用相同对象存储 endpoint/bucket、不同最小权限访问密钥。若 MinIO 仅在同一主机 loopback 提供 HTTP，Hub 和 Worker 均须显式设置 `ROLLFORGE_OBJECT_STORAGE_ALLOW_LOCAL_HTTP=true`；不得用该开关接受 LAN HTTP。先保持 `ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED=false`。
 
-Worker 配置至少需要：`ROLLFORGE_WORKER_HUB_URL`、`ROLLFORGE_WORKER_HUB_TOKEN`、`ROLLFORGE_WORKER_RUNTIME_PYTHON=/opt/rollforge/integration/harbor-runtime/.venv/bin/python`、`ROLLFORGE_WORKER_RUNTIME_ENV_FILE=/var/lib/rollforge/private/runtime.env`、经过验收的 `ROLLFORGE_WORKER_GATEWAY_URL`、与 Hub 相同的对象存储 endpoint/bucket、独立对象存储 access key/secret key，以及 spool 路径 `/var/lib/rollforge/spool`。先设置 `ROLLFORGE_WORKER_RUNS_ENABLED=false`、`ROLLFORGE_SCHEDULER_ENABLED=false`、`ROLLFORGE_SCHEDULER_CONCURRENCY=1`。
+Worker 配置至少需要：`ROLLFORGE_WORKER_HUB_URL`、`ROLLFORGE_WORKER_HUB_TOKEN`、`ROLLFORGE_WORKER_RUNTIME_PYTHON=/opt/rollforge/integration/harbor-runtime/.venv/bin/python`、`ROLLFORGE_WORKER_RUNTIME_ENV_FILE=/var/lib/rollforge/private/runtime.env`、经过验收的 `ROLLFORGE_WORKER_GATEWAY_URL`、与 Hub 相同的对象存储 endpoint/bucket、独立对象存储 access key/secret key，以及 spool 路径 `/var/lib/rollforge/spool`。网关地址默认要求 HTTPS；仅可信 LAN 验收允许显式设置 `ROLLFORGE_WORKER_ALLOW_LAN_HTTP=true`。先设置 `ROLLFORGE_WORKER_RUNS_ENABLED=false`、`ROLLFORGE_SCHEDULER_ENABLED=false`、`ROLLFORGE_SCHEDULER_CONCURRENCY=1`。
 
 Runtime 会话目录和文件使用独立权限。目录由 `rollforge` 拥有且为 0700，文件由 `rollforge` 拥有且为 0600，以满足 Worker 检查并允许服务读取：
 
@@ -125,13 +127,20 @@ sudo systemctl status rollforge-hub.service rollforge-web.service
 curl --fail http://127.0.0.1:8000/health/ready
 ```
 
-在 `web.env` 设置空闲的 `ROLLFORGE_WEB_HOST_PORT`（目标节点的 3000 已占用时可先尝试 3300）；预检会检查该端口。systemd unit 仍只绑定 loopback。按实际主机与端口从管理电脑建立 SSH 隧道，然后访问本机 `http://127.0.0.1:3000`：
+在 `web.env` 设置空闲的 `ROLLFORGE_WEB_HOST_PORT`（目标节点的 3000 已占用时可先尝试 3300）；预检会检查该端口。Hub 和 Web unit 均只绑定 loopback。需要从管理电脑访问 Web 与 Hub API 时建立 SSH 隧道：
 
 ```sh
+LOCAL_WEB_PORT=3000
 REMOTE_WEB_PORT=3300
+LOCAL_HUB_PORT=18000
 SSH_TARGET=user@host
-ssh -N -L "3000:127.0.0.1:${REMOTE_WEB_PORT}" "$SSH_TARGET"
+ssh -N \
+  -L "${LOCAL_WEB_PORT}:127.0.0.1:${REMOTE_WEB_PORT}" \
+  -L "${LOCAL_HUB_PORT}:127.0.0.1:8000" \
+  "$SSH_TARGET"
 ```
+
+Web 通过服务器本机 `127.0.0.1:8000` 访问 Hub；本地 API 调试则访问 `http://127.0.0.1:18000`。隧道的本地端口若已占用，应调整左侧端口，不改变远端服务的 loopback 绑定。
 
 `web.env` 只含 `ROLLFORGE_API_URL=http://127.0.0.1:8000`、匹配 Hub USER 角色的 `ROLLFORGE_WEB_USER_TOKEN`、`ROLLFORGE_WEB_ALLOW_EXPERIMENTAL_RUNS=false` 和 `ROLLFORGE_WEB_HOST_PORT`；禁止 `NEXT_PUBLIC_` 凭证。Web 仅用于单用户本地验收。Hub 的 `ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED`、Worker 的 `ROLLFORGE_WORKER_RUNS_ENABLED`、Scheduler 的 `ROLLFORGE_SCHEDULER_ENABLED` 都保持 `false`。Scheduler unit 只安装，不启用。
 
@@ -145,6 +154,8 @@ sudo journalctl -u rollforge-hub.service -u rollforge-scheduler.service --since 
 ```
 
 开放单 Trial 执行前，必须另行通过真实 PostgreSQL、对象存储、Hub 鉴权、Harbor/E2B 与受限模型网关验收，并确认重启恢复演练。之后由操作者在 root 管理的 `hub.env` 打开写入门，在 `worker.env` 同时打开 Worker 和 Scheduler 开关；本仓库模板本身不启用这些开关。遵循 [Worker 验证记录](validation/2026-10-06-s1-worker.md) 与 [多 Trial 验收手册](multitrial-acceptance.md)。
+
+正式开门前逐项留存可复核证据：数据库迁移和真实租约事务测试；对象存储 Hub/Worker 权限分离、上传/读取/摘要校验和重启后读回；USER/WORKER Token 鉴权、轮换与凭证扫描；受限网关真实模型调用、无效/过期会话拒绝及预算账本重启保留；`native-ready.json`、`pending-commit.json` 的进程/主机恢复、租约回收与备份读回。任一项未通过，三个开关继续为 false。当前目标节点尚未进行这些真实服务验收。
 
 ## 升级与恢复
 
