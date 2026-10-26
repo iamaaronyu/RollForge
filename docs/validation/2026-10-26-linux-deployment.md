@@ -24,6 +24,7 @@
 - 创建 RollForge 专用 bucket 与不同 IAM 用户：Hub 仅 `GetObject`，Worker 仅在该 bucket 内 `GetObject`/`PutObject`。真实 S3 请求验证 Worker 上传成功、Hub 读取成功、Hub 写入被拒。
 - 数据库 Alembic 迁移成功。重启 PostgreSQL 容器后，迁移版本 `0005_cancelled_executions` 仍存在，Hub readiness 恢复为 HTTP 200。
 - Silo 容器重启后，前述对象仍可读且字节一致。该项只验证容器重启，不等于整机断电恢复或备份恢复演练。
+- 使用 Worker 短时会话发送 1 次无业务内容、`max_tokens=8` 的模型探测；可信网关日志记录 DeepSeek 上游 HTTP 200，未输出或保存模型响应。尚未验收预算耗尽、会话过期/撤销及账本重启恢复。
 - `rollforge-hub.service` 和 `rollforge-web.service` 已启用并运行，分别只监听 `127.0.0.1:8000` 与 `127.0.0.1:3300`，readiness/Web HTTP 均为 200。`rollforge-scheduler.service` 仍 disabled/inactive；任务创建写入、真实执行和 Web 实验运行开关保持关闭。
 - 代码验证：`make check` 为 169 passed、51 skipped；`make runtime-check` 为 9 passed。跳过项是需要额外真实 PostgreSQL、对象存储或运行数据的集成验收。
 
