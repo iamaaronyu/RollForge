@@ -64,6 +64,7 @@ def test_projection_missing_zero_and_media():
         },
     ]
     result = project_trajectory(json.dumps(data), available_media_paths=media_paths)
+    assert result.projection_version == 2
     assert result.steps[0].media[0].artifact_path == "input.png"
     assert result.steps[0].media[1].artifact_path is None
     assert result.steps[0].media[1].duration_sec == 1.5
@@ -103,6 +104,113 @@ def test_projection_rejects_invalid_media_source_without_echoing_path():
     with pytest.raises(UnsupportedTrajectory, match="轨迹格式不受支持") as error:
         project_trajectory(json.dumps(data), available_media_paths={"secret-key"})
     assert "secret-key" not in str(error.value)
+
+
+def test_projection_expands_embedded_subagents_and_redacts_external_references():
+    data = document()
+    data["steps"][1]["observation"]["results"][0]["subagent_trajectory_ref"] = [
+        {"trajectory_id": "sub-1"},
+        {"trajectory_path": "https://private.invalid/trace.json?token=secret"},
+    ]
+    data["subagent_trajectories"] = [
+        {
+            "schema_version": "ATIF-v1.8",
+            "trajectory_id": "sub-1",
+            "agent": {"name": "helper"},
+            "steps": [{"step_id": 1, "source": "agent", "message": "child output"}],
+        }
+    ]
+
+    result = project_trajectory(json.dumps(data))
+
+    observation = result.steps[1].observations[0]
+    assert observation.subagent_trajectory_ids == ("sub-1",)
+    assert observation.unresolved_subagent_count == 1
+    assert result.subagents[0].agent_name == "helper"
+    assert result.subagents[0].steps[0].message == "child output"
+    assert "private.invalid" not in result.model_dump_json()
+    assert "token=secret" not in result.model_dump_json()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "duplicate",
+        "missing-id",
+        "missing-agent",
+        "too-deep",
+        "too-many-subagents",
+        "too-many-steps",
+    ],
+)
+def test_projection_rejects_invalid_or_overdeep_embedded_subagents(change):
+    data = document()
+    child = {
+        "schema_version": "ATIF-v1.8",
+        "trajectory_id": "child",
+        "agent": {"name": "helper"},
+        "steps": [{"step_id": 1, "source": "agent", "message": "synthetic"}],
+    }
+    if change == "duplicate":
+        data["subagent_trajectories"] = [child, child]
+    elif change == "missing-id":
+        child.pop("trajectory_id")
+        data["subagent_trajectories"] = [child]
+    elif change == "missing-agent":
+        child.pop("agent")
+        data["subagent_trajectories"] = [child]
+    elif change == "too-many-subagents":
+        data["subagent_trajectories"] = []
+        for ordinal in range(16):
+            branch = {
+                "schema_version": "ATIF-v1.8",
+                "trajectory_id": f"child-{ordinal}",
+                "agent": {"name": "helper"},
+                "steps": [{"step_id": 1, "source": "agent", "message": "synthetic"}],
+                "subagent_trajectories": [],
+            }
+            for nested_ordinal in range(4):
+                branch["subagent_trajectories"].append(
+                    {
+                        "schema_version": "ATIF-v1.8",
+                        "trajectory_id": f"nested-{ordinal}-{nested_ordinal}",
+                        "agent": {"name": "nested"},
+                        "steps": [{"step_id": 1, "source": "agent", "message": "synthetic"}],
+                    }
+                )
+            data["subagent_trajectories"].append(branch)
+    elif change == "too-many-steps":
+        data["steps"] = [
+            {"step_id": ordinal, "source": "agent", "message": "synthetic"}
+            for ordinal in range(1, 1001)
+        ]
+        data["subagent_trajectories"] = []
+        for ordinal in range(5):
+            data["subagent_trajectories"].append(
+                {
+                    "schema_version": "ATIF-v1.8",
+                    "trajectory_id": f"child-{ordinal}",
+                    "agent": {"name": "helper"},
+                    "steps": [
+                        {"step_id": step, "source": "agent", "message": "synthetic"}
+                        for step in range(1, 1001)
+                    ],
+                }
+            )
+    else:
+        current = child
+        for ordinal in range(4):
+            nested = {
+                "schema_version": "ATIF-v1.8",
+                "trajectory_id": f"child-{ordinal}",
+                "agent": {"name": "helper"},
+                "steps": [{"step_id": 1, "source": "agent", "message": "synthetic"}],
+            }
+            current["subagent_trajectories"] = [nested]
+            current = nested
+        data["subagent_trajectories"] = [child]
+    with pytest.raises(UnsupportedTrajectory, match="轨迹格式不受支持"):
+        project_trajectory(json.dumps(data))
 
 
 def test_saved_real_harbor_trajectory():

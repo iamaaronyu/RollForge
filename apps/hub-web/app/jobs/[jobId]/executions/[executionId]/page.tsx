@@ -37,7 +37,7 @@ export default async function Artifacts({ params, searchParams }: {
   return <main><header><Link href={`/jobs/${jobId}`}>← 执行历史</Link><span>执行产物</span></header>
     <h1>结果与原始记录</h1><p className="identifier">{executionId}</p><p className="score">{resultText(index.result)}</p>
     <section className="panel"><h2>执行时间线</h2>
-      <p className="note">只展示主轨迹，保留原始顺序；搜索覆盖当前最多 1000 步的消息、推理、工具调用、返回和媒体元数据，不修改原始数据。用量不累加，复制上下文单独标记。缺失字段显示未知。图片和音频显示受 Manifest 确认的附件路径与类型；媒体内容、子轨迹和扩展字段请查阅原始文件。</p>
+      <p className="note">主轨迹保留原始顺序，搜索覆盖主轨迹最多 1000 步的消息、推理、工具调用、返回和媒体元数据。已内嵌子轨迹可展开；外部子轨迹不自动取址。用量不累加，复制上下文单独标记，缺失字段显示未知。图片和音频显示受 Manifest 确认的附件路径与类型；媒体内容和扩展字段请查阅原始文件。</p>
       {trajectoryProblem && <p role="alert">{trajectoryProblem}</p>}
       {!trajectory && !trajectoryProblem && <p>尚无可展示的主轨迹。</p>}
       {trajectory && <><p>来源 {trajectory.source_version} · 投影版本 {trajectory.projection_version}</p>

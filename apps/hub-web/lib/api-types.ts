@@ -891,6 +891,22 @@ export interface components {
             /** Size */
             readonly size: number;
         };
+        /** SubtrajectoryView */
+        readonly SubtrajectoryView: {
+            /** Agent Name */
+            readonly agent_name: string;
+            /** Source Version */
+            readonly source_version: string;
+            /** Steps */
+            readonly steps: readonly components["schemas"]["TimelineStep"][];
+            /**
+             * Subagents
+             * @default []
+             */
+            readonly subagents: readonly components["schemas"]["SubtrajectoryView"][];
+            /** Trajectory Id */
+            readonly trajectory_id: string;
+        };
         /** TaskSpec */
         readonly TaskSpec: {
             /** Archive Digest */
@@ -950,21 +966,36 @@ export interface components {
         readonly ToolObservation: {
             /** Call Id */
             readonly call_id?: string | null;
+            /**
+             * Subagent Trajectory Ids
+             * @default []
+             */
+            readonly subagent_trajectory_ids: readonly string[];
             /** Text */
             readonly text?: string | null;
+            /**
+             * Unresolved Subagent Count
+             * @default 0
+             */
+            readonly unresolved_subagent_count: number;
         };
         /** TrajectoryView */
         readonly TrajectoryView: {
             /**
              * Projection Version
-             * @default 1
+             * @default 2
              * @constant
              */
-            readonly projection_version: 1;
+            readonly projection_version: 2;
             /** Source Version */
             readonly source_version: string;
             /** Steps */
             readonly steps: readonly components["schemas"]["TimelineStep"][];
+            /**
+             * Subagents
+             * @default []
+             */
+            readonly subagents: readonly components["schemas"]["SubtrajectoryView"][];
         };
         /** TrialList */
         readonly TrialList: {

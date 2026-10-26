@@ -1,5 +1,7 @@
 """基于 Harbor 0.24.0 ATIF 模型的有界只读投影，不加载运行时依赖。"""
 
+from __future__ import annotations
+
 import json
 import math
 from typing import Any, Literal
@@ -7,6 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from rollforge_schemas.trajectory import (
     MediaReference,
+    SubtrajectoryView,
     TimelineStep,
     ToolAction,
     ToolObservation,
@@ -143,6 +146,19 @@ class Call(Input):
 class Observation(Input):
     source_call_id: str | None = None
     content: str | list[Part] | None = None
+    subagent_trajectory_ref: list[SubagentTrajectoryRef] | None = None
+
+
+class SubagentTrajectoryRef(Input):
+    trajectory_id: str | None = None
+    session_id: str | None = None
+    trajectory_path: str | None = None
+
+    @model_validator(mode="after")
+    def require_resolvable_reference(self):
+        if self.trajectory_id is None and self.trajectory_path is None:
+            raise ValueError("ATIF 子轨迹引用不可解析")
+        return self
 
 
 class Feedback(Input):
@@ -164,6 +180,128 @@ class Step(Input):
 class Document(Input):
     schema_version: str = Field(pattern=r"^ATIF-v1\.[0-8]$")
     steps: list[Step] = Field(min_length=1, max_length=1000)
+    trajectory_id: str | None = None
+    agent: dict[str, Any] | None = None
+    subagent_trajectories: list[Document] | None = Field(default=None, max_length=16)
+
+
+MAX_SUBAGENT_DEPTH = 3
+MAX_TOTAL_SUBAGENTS = 64
+MAX_TOTAL_STEPS = 5000
+
+
+def project_steps(document: Document, media_paths: set[str], budget: dict, child_ids: set[str]):
+    if len(document.steps) + budget["steps"] > MAX_TOTAL_STEPS:
+        raise UnsupportedTrajectory()
+    budget["steps"] += len(document.steps)
+    projected = []
+    for ordinal, step in enumerate(document.steps, 1):
+        if step.step_id != ordinal:
+            raise UnsupportedTrajectory()
+        calls = step.tool_calls or []
+        call_ids = {call.tool_call_id for call in calls}
+        if len(call_ids) != len(calls):
+            raise UnsupportedTrajectory()
+        observations = step.observation.results if step.observation else []
+        if any(
+            item.source_call_id is not None and item.source_call_id not in call_ids
+            for item in observations
+        ):
+            raise UnsupportedTrajectory()
+        usage = None
+        if step.metrics is not None:
+            usage = Usage.model_validate(
+                {name: step.metrics.get(name) for name in Usage.model_fields}
+            )
+        projected_observations = []
+        for item in observations:
+            refs = item.subagent_trajectory_ref or []
+            referenced_ids = tuple(
+                dict.fromkeys(
+                    reference.trajectory_id
+                    for reference in refs
+                    if reference.trajectory_id in child_ids
+                )
+            )
+            projected_observations.append(
+                ToolObservation(
+                    call_id=item.source_call_id,
+                    text=text_content(item.content),
+                    subagent_trajectory_ids=referenced_ids,
+                    unresolved_subagent_count=sum(
+                        reference.trajectory_id not in child_ids for reference in refs
+                    ),
+                )
+            )
+        projected.append(
+            TimelineStep(
+                step_id=step.step_id,
+                source=step.source,
+                timestamp=step.timestamp,
+                message=text_content(step.message),
+                reasoning=step.reasoning_content,
+                usage=usage,
+                copied_context=step.is_copied_context,
+                tools=tuple(
+                    ToolAction(
+                        call_id=call.tool_call_id,
+                        name=call.function_name,
+                        arguments_text=json.dumps(
+                            call.arguments, ensure_ascii=False, allow_nan=False
+                        ),
+                    )
+                    for call in calls
+                ),
+                observations=tuple(projected_observations),
+                media=(
+                    *media_content(step.message, media_paths),
+                    *(
+                        reference
+                        for item in observations
+                        for reference in media_content(item.content, media_paths)
+                    ),
+                ),
+            )
+        )
+    return tuple(projected)
+
+
+def project_subagents(document: Document, media_paths: set[str], budget: dict, depth: int = 1):
+    children = document.subagent_trajectories or []
+    if not children:
+        return ()
+    if depth > MAX_SUBAGENT_DEPTH or budget["subagents"] + len(children) > MAX_TOTAL_SUBAGENTS:
+        raise UnsupportedTrajectory()
+    ids = [child.trajectory_id for child in children]
+    if any(not isinstance(item, str) or not item for item in ids) or len(set(ids)) != len(ids):
+        raise UnsupportedTrajectory()
+    if any(
+        not isinstance(child.agent, dict)
+        or not isinstance(child.agent.get("name"), str)
+        or not child.agent["name"]
+        for child in children
+    ):
+        raise UnsupportedTrajectory()
+    budget["subagents"] += len(children)
+    return tuple(
+        SubtrajectoryView(
+            trajectory_id=child.trajectory_id,
+            agent_name=child.agent["name"],
+            source_version=child.schema_version,
+            steps=project_steps(
+                child,
+                media_paths,
+                budget,
+                {
+                    sub.trajectory_id
+                    for sub in child.subagent_trajectories or []
+                    if sub.trajectory_id
+                },
+            ),
+            subagents=project_subagents(child, media_paths, budget, depth + 1),
+        )
+        for child in children
+    )
 
 
 def project_trajectory(
@@ -172,61 +310,19 @@ def project_trajectory(
     """拒绝不支持/损坏的结构，不回传解析错误中的原始内容。"""
     try:
         document = Document.model_validate_json(value)
-        projected = []
         media_paths = available_media_paths or set()
-        for ordinal, step in enumerate(document.steps, 1):
-            if step.step_id != ordinal:
-                raise UnsupportedTrajectory()
-            calls = step.tool_calls or []
-            ids = {call.tool_call_id for call in calls}
-            if len(ids) != len(calls):
-                raise UnsupportedTrajectory()
-            observations = step.observation.results if step.observation else []
-            if any(
-                item.source_call_id is not None and item.source_call_id not in ids
-                for item in observations
-            ):
-                raise UnsupportedTrajectory()
-            usage = None
-            if step.metrics is not None:
-                usage = Usage.model_validate(
-                    {name: step.metrics.get(name) for name in Usage.model_fields}
-                )
-            projected.append(
-                TimelineStep(
-                    step_id=step.step_id,
-                    source=step.source,
-                    timestamp=step.timestamp,
-                    message=text_content(step.message),
-                    reasoning=step.reasoning_content,
-                    usage=usage,
-                    copied_context=step.is_copied_context,
-                    tools=tuple(
-                        ToolAction(
-                            call_id=call.tool_call_id,
-                            name=call.function_name,
-                            arguments_text=json.dumps(
-                                call.arguments, ensure_ascii=False, allow_nan=False
-                            ),
-                        )
-                        for call in calls
-                    ),
-                    observations=tuple(
-                        ToolObservation(
-                            call_id=item.source_call_id, text=text_content(item.content)
-                        )
-                        for item in observations
-                    ),
-                    media=(
-                        *media_content(step.message, media_paths),
-                        *(
-                            reference
-                            for item in observations
-                            for reference in media_content(item.content, media_paths)
-                        ),
-                    ),
-                )
-            )
-        return TrajectoryView(source_version=document.schema_version, steps=tuple(projected))
+        direct_ids = {
+            child.trajectory_id
+            for child in document.subagent_trajectories or []
+            if child.trajectory_id
+        }
+        budget = {"steps": 0, "subagents": 0}
+        steps = project_steps(document, media_paths, budget, direct_ids)
+        subagents = project_subagents(document, media_paths, budget)
+        return TrajectoryView(
+            source_version=document.schema_version,
+            steps=steps,
+            subagents=subagents,
+        )
     except (ValidationError, ValueError, TypeError, RecursionError):
         raise UnsupportedTrajectory("轨迹格式不受支持，请查看原始文件") from None

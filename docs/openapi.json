@@ -1133,6 +1133,46 @@
         "title": "StoredFile",
         "type": "object"
       },
+      "SubtrajectoryView": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_name": {
+            "title": "Agent Name",
+            "type": "string"
+          },
+          "source_version": {
+            "title": "Source Version",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "subagents": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SubtrajectoryView"
+            },
+            "title": "Subagents",
+            "type": "array"
+          },
+          "trajectory_id": {
+            "title": "Trajectory Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trajectory_id",
+          "agent_name",
+          "source_version",
+          "steps"
+        ],
+        "title": "SubtrajectoryView",
+        "type": "object"
+      },
       "TaskSpec": {
         "additionalProperties": false,
         "properties": {
@@ -1295,6 +1335,14 @@
             ],
             "title": "Call Id"
           },
+          "subagent_trajectory_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Subagent Trajectory Ids",
+            "type": "array"
+          },
           "text": {
             "anyOf": [
               {
@@ -1305,6 +1353,12 @@
               }
             ],
             "title": "Text"
+          },
+          "unresolved_subagent_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Unresolved Subagent Count",
+            "type": "integer"
           }
         },
         "title": "ToolObservation",
@@ -1314,8 +1368,8 @@
         "additionalProperties": false,
         "properties": {
           "projection_version": {
-            "const": 1,
-            "default": 1,
+            "const": 2,
+            "default": 2,
             "title": "Projection Version",
             "type": "integer"
           },
@@ -1328,6 +1382,14 @@
               "$ref": "#/components/schemas/TimelineStep"
             },
             "title": "Steps",
+            "type": "array"
+          },
+          "subagents": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SubtrajectoryView"
+            },
+            "title": "Subagents",
             "type": "array"
           }
         },

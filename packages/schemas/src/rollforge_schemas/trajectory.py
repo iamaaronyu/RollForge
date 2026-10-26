@@ -1,5 +1,7 @@
 """Viewer 的版本化白名单投影；原始 ATIF 保留在对象存储。"""
 
+from __future__ import annotations
+
 from typing import Literal
 
 from pydantic import Field
@@ -23,6 +25,8 @@ class ToolAction(Contract):
 class ToolObservation(Contract):
     call_id: str | None = None
     text: str | None = None
+    subagent_trajectory_ids: tuple[str, ...] = ()
+    unresolved_subagent_count: int = Field(default=0, ge=0, strict=True)
 
 
 class MediaReference(Contract):
@@ -45,7 +49,16 @@ class TimelineStep(Contract):
     copied_context: bool | None = None
 
 
-class TrajectoryView(Contract):
-    projection_version: Literal[1] = 1
+class SubtrajectoryView(Contract):
+    trajectory_id: str
+    agent_name: str
     source_version: str
     steps: tuple[TimelineStep, ...]
+    subagents: tuple[SubtrajectoryView, ...] = ()
+
+
+class TrajectoryView(Contract):
+    projection_version: Literal[2] = 2
+    source_version: str
+    steps: tuple[TimelineStep, ...]
+    subagents: tuple[SubtrajectoryView, ...] = ()
