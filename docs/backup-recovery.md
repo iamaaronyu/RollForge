@@ -6,7 +6,7 @@
 
 ## 创建和检查
 
-安装 `pg_dump`、`pg_restore`、`psql`，创建仅 `rollforge` 可读写的加密备份目录。源数据库 URL 与对象存储凭证由受保护的 `hub.env` 注入；命令行、shell history 和日志不包含连接密码。网关账本路径取决于启动 `scripts/model_gateway.py --config ...` 时所用配置路径，预算数据库是该路径替换扩展名为 `.sqlite3` 后的文件。备份不复制含上游 Key 的网关 JSON 配置。
+安装 `pg_dump`、`pg_restore`、`psql`，创建仅 `rollforge` 可读写的加密备份目录。由管理员创建 `/etc/rollforge/backup.env`（`root:rollforge 0640`），其中包含 `ROLLFORGE_DATABASE_URL` 和 `ROLLFORGE_BACKUP_OBJECT_STORAGE_ENDPOINT`、`_BUCKET`、`_ACCESS_KEY`、`_SECRET_KEY`（变量名前缀均为 `ROLLFORGE_BACKUP_OBJECT_STORAGE`）。备份对象存储身份必须独立于 Hub/Worker：仅授予指定 bucket 的 `ListBucket` 与 `GetObject`，不授予写入、删除或其他 bucket 权限；Hub 的最小权限角色保持不变。不得将密钥写入命令行、shell history 或日志。网关账本路径取决于启动 `scripts/model_gateway.py --config ...` 时所用配置路径，预算数据库是该路径替换扩展名为 `.sqlite3` 后的文件。备份不复制含上游 Key 的网关 JSON 配置。
 
 停写并停止服务后，由管理员通过受控终端运行：
 
@@ -15,7 +15,7 @@ BACKUP_ID=$(date -u +%Y%m%dT%H%M%SZ)
 sudo systemd-run --wait --pipe --collect \
   --uid=rollforge --gid=rollforge \
   --property=WorkingDirectory=/opt/rollforge \
-  --property=EnvironmentFile=/etc/rollforge/hub.env \
+  --property=EnvironmentFile=/etc/rollforge/backup.env \
   /opt/rollforge/.venv/bin/python /opt/rollforge/scripts/backup_rollforge.py create \
     --destination "/mnt/rollforge-backups/${BACKUP_ID}" \
     --gateway-budget-db /var/lib/rollforge/private/gateway.sqlite3 \

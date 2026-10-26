@@ -661,7 +661,9 @@ def create_backup(destination: Path, budget_db: Path, *, quiescent: bool):
         with (staging / "database.dump").open("rb") as stream:
             os.fsync(stream.fileno())
         snapshot_sqlite(budget_db, staging / "gateway-budget.sqlite3")
-        client, bucket = s3_client_from_environment()
+        # The Hub identity intentionally cannot enumerate the bucket. Backups
+        # use a separate, read-only identity with ListBucket/GetObject access.
+        client, bucket = s3_client_from_environment("ROLLFORGE_BACKUP_OBJECT_STORAGE")
         try:
             _objects, _object_files = snapshot_objects(client, bucket, staging)
         finally:

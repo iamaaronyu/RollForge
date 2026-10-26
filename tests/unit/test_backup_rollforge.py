@@ -2,11 +2,13 @@ import hashlib
 import json
 import sqlite3
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
 from scripts.backup_rollforge import (
     BackupError,
+    create_backup,
     postgres_environment,
     record_file,
     require_no_active_gateway_sessions,
@@ -193,6 +195,50 @@ def test_postgres_password_is_kept_out_of_process_environment(tmp_path):
     assert secret not in " ".join(environment.values())
     assert passfile.stat().st_mode & 0o777 == 0o600
     assert "do-not-show\\:this" in passfile.read_text()
+
+
+def test_backup_uses_dedicated_read_only_object_storage_identity(tmp_path, monkeypatch):
+    budget = budget_database(tmp_path / "private", {"1" * 64: 1})
+    parent = tmp_path / "backups"
+    parent.mkdir(mode=0o700)
+    parent.chmod(0o700)
+    monkeypatch.setenv(
+        "ROLLFORGE_DATABASE_URL", "postgresql://rollforge:secret@127.0.0.1:5432/rollforge"
+    )
+    calls = []
+    client = Mock()
+    client.close = Mock()
+
+    def storage_client(prefix):
+        calls.append(prefix)
+        return client, "rollforge"
+
+    monkeypatch.setattr(
+        "scripts.backup_rollforge.postgres_state_fingerprint",
+        lambda *_: {
+            "state": {},
+            "reference_count": 0,
+            "reference_sha256": "0" * 64,
+            "object_keys": set(),
+            "manifest_digests": {},
+        },
+    )
+
+    def dump_database(_name, arguments, _environment):
+        dump_argument = next(arg for arg in arguments if arg.startswith("--file="))
+        dump_path = Path(dump_argument.removeprefix("--file="))
+        dump_path.write_bytes(b"test dump")
+        return ""
+
+    monkeypatch.setattr("scripts.backup_rollforge.run_postgres", dump_database)
+    monkeypatch.setattr("scripts.backup_rollforge.s3_client_from_environment", storage_client)
+    monkeypatch.setattr("scripts.backup_rollforge.snapshot_objects", lambda _c, _b, _r: ([], []))
+
+    manifest = create_backup(parent / "bundle", budget, quiescent=True)
+
+    assert calls == ["ROLLFORGE_BACKUP_OBJECT_STORAGE"]
+    assert manifest["object_bucket"] == "rollforge"
+    client.close.assert_called_once_with()
 
 
 def test_restore_target_must_be_separate_from_source(monkeypatch):
