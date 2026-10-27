@@ -1,6 +1,6 @@
 # S0 模型网关受限测试
 
-本流程只适用于可信局域网中的独占 E2B 测试环境，并发 1。上游模型 Key 留在可信网关宿主，不复制到 E2B 主机或 Sandbox。请求预算已使用 SQLite 跨进程、重启原子持久化；网关仍未提供 TLS、部署身份认证、token 计费或生产级密钥管理。
+本流程只适用于可信局域网中的独占 E2B 测试环境，并发 1。上游模型 Key 留在可信网关宿主，不复制到 E2B 主机或 Sandbox。会话请求数和成本预算使用 SQLite 跨进程、重启原子持久化；网关仍未提供 TLS、部署身份认证或生产级密钥管理。
 
 ## 网络配置依据
 
@@ -15,11 +15,17 @@
 1. SDK 确认没有活动 Sandbox，停止其他真实执行测试。
 2. 在 Linux 先设置受限防火墙：针对 Sandbox 的 `veth+` 流量、网关单个地址，raw PREROUTING 先允许 TCP 11441，再丢弃到该地址的其他流量。保留现有规则，不清空链；使用本次测试专属 comment，结束后按完整规则删除。
 3. 新建临时 Compose override，仅将 orchestrator 的 `ALLOW_SANDBOX_INTERNAL_CIDRS` 设为网关 IPv4 `/32`。禁止填写整个局域网网段。合并已有 override，重新创建 orchestrator；等待 healthy 和节点注册完成。若随后 Sandbox 创建返回 placement 503，先确认没有活动 Sandbox/Firecracker，再从 Compose 目录执行 `docker compose restart api`，等待 API healthy 后重试。该恢复顺序已在 2026-10-27 的远端无模型网络验收中复核；不要在有活动 Trial 时重启 API。
-4. 可信网关宿主创建 0700 忽略目录及 0600 配置。`upstream_key` 是真实 Key；`sessions` 以随机 token 的 SHA-256 为键，值包括 `model`、`expires_at` 和 `max_requests`。不要把原始会话 token 写入配置，也不要把配置内容写到终端或提交。网关启动时就在同目录创建权限 0600 的 `<配置名>.sqlite3` 预算账本；即使尚未发生模型请求，也能形成明确的空预算状态。备份/恢复时需将配置和账本作为一组处理。重启不能重置已用次数。
+4. 可信网关宿主创建 0700 忽略目录及 0600 配置。`upstream_key` 是真实 Key；`sessions` 以随机 token 的 SHA-256 为键，值包括 `model`、`expires_at`、`max_requests` 和 `max_cost_microusd`（会话累计费用上限，单位为微美元整数）。上限缺失或类型错误时该会话拒绝授权。不要把原始会话 token 写入配置，也不要把配置内容写到终端或提交。网关启动时就在同目录创建权限 0600 的 `<配置名>.sqlite3` 预算账本；即使尚未发生模型请求，也能形成明确的空预算状态。备份/恢复时需将配置和账本作为一组处理。重启不能重置已用次数或已用费用。
 5. 运行 `scripts/model_gateway.py --config <私密配置路径> --host <网关地址> --port 11441`，日志仅记录状态码。Sandbox 环境的 `ANTHROPIC_API_KEY` 设置为会话 token，模型 base URL 指向网关。设置 `CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192`；固定 Harbor 已支持传入该变量，超过网关输出预算的请求会被拒绝。
 6. 执行 `examples/run_isolation_acceptance.py --run --separate-verifier --env-file <私密会话环境文件>`。可重复添加 `--blocked-url`，验证网关其他端口及控制面地址不可达。负向端口必须先从 Linux 宿主验证可访问，防止把服务未启动误判为网络隔离。
 7. 验收要求：无认证网关请求 403；真实模型调用评分 1.0；Agent 无真实上游 Key、E2B Key 和私密测试；独立 Verifier 无凭证；原始输出无凭证命中；结束后 Sandbox 和 Firecracker 为 0。
 8. 撤销会话并验证 403。恢复不含网关 override 的 orchestrator，删除本次专属防火墙规则与临时 override；停止测试监听器，删除私密网关配置和会话环境文件。保留受保护的本地证据，不提交原始输出。
+
+## 请求成本预算
+
+网关在转发前按 DeepSeek 当前公开费率的峰时高价预留：输入按完整 1M 上下文上限的两倍、输出按请求 `max_tokens` 计；配置了 `web_search*` 或 `web_fetch*` 服务端工具时，再按 `max_tokens` 个调用预留单次 Search/Fetch 费用。两倍输入预留覆盖 Anthropic 兼容响应将缓存 Token 单列或计入 `input_tokens` 的差异。未知 `web_*` / `server_*` 服务端工具拒绝转发。返回完整、可解析的用量后，SQLite 原子结算输入/缓存/输出 Token 及服务端工具调用，并释放未用预留；断流、进程中断、上游错误或缺少用量时保留完整预留，避免不确定的已产生费用被重置。账本保存累计已用额与未结算预留额。
+
+费率依据 [DeepSeek 官方定价](https://api-docs.deepseek.com/quick_start/pricing/)：deepseek-flash 当前峰时输入未命中缓存为每百万 Token 0.30 美元、输出为每百万 Token 1.20 美元；Search/Fetch 公示单价为每 1,000 次 0.75 美元，供应商公告自 2026-11-01 起计费。网关输入一律按未命中缓存价格计费，低于峰时费率不降低预留。费率可能调整；调整后需先更新网关费率常量及对应验证，再发放新会话。该预算不是供应商账单对账；真实上游用量格式、费用账单和失败/断流边界仍须用授权会话验收。
 
 主机重启还需要单独验收。以上流程不会使临时防火墙或测试网关自动持久化，也不会开启 Hub 执行入口。
 

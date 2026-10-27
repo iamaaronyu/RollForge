@@ -17,7 +17,7 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 | 固定运行组合 | Harbor 0.24.0、E2B 2.46.0、Claude Code 2.1.81、DeepSeek 官方 Anthropic Messages/deepseek-flash | 控制面与 Runtime 分开锁依赖；没有 Fork Harbor Core |
 | 自托管 E2B | Linux/KVM、官方固定部署、SDK smoke、宿主预检与恢复脚本 | 约 8 GiB 测试机先验收并发 1；不承诺一般任务容量 |
 | S0 真实执行 | 示例任务、原生结果解析、评分与零分、Agent/Verifier 故障、超时、重复取消清理 | 有真实模型/E2B 证据；零分与基础设施失败分开 |
-| 凭证与验证隔离 | Mac 网关保留上游 Key，Sandbox 使用短期受限会话，独立 Verifier，网络负向探测与输出凭证扫描 | 会话限期、限次与输出限制已实现；SQLite 账本原子持久化请求次数。网关仍为 LAN HTTP，缺部署认证、token 级费用预算及生产密钥管理 |
+| 凭证与验证隔离 | Mac 网关保留上游 Key，Sandbox 使用短期受限会话，独立 Verifier，网络负向探测与输出凭证扫描 | 会话限期、限次、输出限制及按供应商用量结算的保守费用预留已实现；请求数与费用账本由 SQLite 原子持久化。真实模型账单对账、TLS、部署认证及生产密钥管理仍未验收 |
 | 部署恢复 | 服务重启、宿主重启后人工恢复隧道与防火墙，再次真实运行 | 验证的是人工恢复流程，无人值守恢复尚未实现 |
 | Linux 服务化部署 | Hub/Web loopback systemd、独立 PostgreSQL/Redis/S3 兼容存储、凭证分离及恢复手册 | 目标机服务已安装，Hub/Web active、数据容器健康；S3 权限与容器重启读回通过。Scheduler inactive、所有写入/执行门关闭。加密备份读回、常驻网关及平台 Worker 真实多 Trial 未验收，详见[部署记录](validation/2026-10-26-deployment-audit.md) |
 | Job/Trial 取消 | USER API、Python SDK、任务详情页确认按钮；运行中撤销租约并标记 Execution CANCELLED | PostgreSQL 事务、并发完成互斥与迁移回退/重放通过；真实 E2B 清理时延、SIGKILL/掉电和孤儿 Sandbox 验收待完成。详见 [取消验收记录](validation/2026-10-26-job-cancellation.md) |
@@ -83,7 +83,7 @@ Job/Trial 取消 API 与页面确认已实现：取消与完成使用同一 Tria
 
 ### 正式开放前并行完成：网关与权限加固
 
-把实验网关改为服务化 TLS 接入和部署认证，并定义 token 级费用预算、密钥轮换和撤销。请求次数预算已使用 SQLite 原子持久化；仍需明确 token 预算及失败/重试如何计费。补充用户会话登录、Worker 权限范围、对象存储最小权限和租户隔离；未知任务使用前需独立隔离验收。
+把实验网关改为服务化 TLS 接入和部署认证，并完成真实供应商账单对账、密钥轮换和撤销。请求次数与成本预留已使用 SQLite 原子持久化；完整用量结算，异常和缺失用量时保留最大预留。补充用户会话登录、Worker 权限范围、对象存储最小权限和租户隔离；未知任务使用前需独立隔离验收。
 
 验收：网关重启不能重置请求/费用预算，重复/并发请求不能超额；TLS 与部署认证到位；凭证不进入 Sandbox、日志或快照；跨用户/Worker/对象访问拒绝；节点网络策略不能扩大其他租户权限。正式开关需要这些条件及对应真实主链证据，不能只看网页可操作。
 
@@ -93,7 +93,7 @@ Job/Trial 取消 API 与页面确认已实现：取消与完成使用同一 Tria
 
 每个切片顺序：明确不变量与验收 → 共享契约/迁移 → 服务与鉴权 → OpenAPI/消费者 → 真实数据库/存储验证 → 涉及主链则真实 Harbor/E2B/模型验收 → make check 与必要的 runtime-check → 凭证及公开适宜性审查 → 独立正常 commit/push → 更新证据。
 
-Registry API、版本发现/绑定页面，以及 Registry 绑定双 Trial 平台运行均已有验收。Linux 主机有 Hub/Web、PG、Silo 和私密配置，当前通过 Tailscale 地址可管理；数据库/对象存储/API 控制面验收完成，执行门保持关闭。2026-10-27 两次受控网络验收通过：Sandbox 经临时单地址 allowlist/单端口规则访问 Linux 探针；随后经 Tailscale 到 Mac 临时网关，无效会话收到 403，未调用模型 API。placement 503 在无活动 VM 时按固定流程刷新 E2B API 后恢复。Mac 常驻网关 LaunchAgent 已就绪但无有效会话；持久 E2B 防火墙工具和 systemd 单元已部署到 Linux checkout，节点级 allowlist 尚未启用，因为它对该节点所有 Sandbox 生效，需先确认独占范围。TLS/部署认证、token 费用预算、会话签发/过期/撤销、重启后防火墙恢复仍需验收。随后完成真实取消清理、Worker/Scheduler 双进程与强制中断恢复。完整远端 PostgreSQL 回归为 38 passed、15 skipped；真实 MinIO 下载 API 仍需固定二进制或针对 Silo 的独立验收。加密备份卷未挂载且宿主缺少 PostgreSQL 16 客户端；先准备独立加密介质和匹配客户端，再完成隔离读回。双 Worker/并发 2、宿主故障与监控验收之后推进；实验比较、Failure Mining、训练导出、高级 Pause/Resume/Fork 和 RL 后置。详细未完成关卡见[部署记录](validation/2026-10-26-deployment-audit.md)。
+Registry API、版本发现/绑定页面，以及 Registry 绑定双 Trial 平台运行均已有验收。Linux 主机有 Hub/Web、PG、Silo 和私密配置，当前通过 Tailscale 地址可管理；数据库/对象存储/API 控制面验收完成，执行门保持关闭。2026-10-27 两次受控网络验收通过：Sandbox 经临时单地址 allowlist/单端口规则访问 Linux 探针；随后经 Tailscale 到 Mac 临时网关，无效会话收到 403，未调用模型 API。placement 503 在无活动 VM 时按固定流程刷新 E2B API 后恢复。Mac 常驻网关 LaunchAgent 已就绪但无有效会话；持久 E2B 防火墙工具和 systemd 单元已部署到 Linux checkout，节点级 allowlist 尚未启用，因为它对该节点所有 Sandbox 生效，需先确认独占范围。保守 token 费用预算已实现，但真实上游用量格式/账单、TLS/部署认证、会话签发/过期/撤销、重启后防火墙恢复仍需验收。随后完成真实取消清理、Worker/Scheduler 双进程与强制中断恢复。完整远端 PostgreSQL 回归为 38 passed、15 skipped；真实 MinIO 下载 API 仍需固定二进制或针对 Silo 的独立验收。加密备份卷未挂载；容器化 PostgreSQL 客户端已通过只读 dump/restore 工具路径验收，真实备份与隔离读回仍待独立加密介质和只读对象存储身份就绪。双 Worker/并发 2、宿主故障与监控验收之后推进；实验比较、Failure Mining、训练导出、高级 Pause/Resume/Fork 和 RL 后置。详细未完成关卡见[部署记录](validation/2026-10-26-deployment-audit.md)。
 
 本批页面及查询验收见 [页面记录](validation/2026-10-06-s1-web.md)、[Registry 页面记录](validation/2026-10-26-registry-ui.md)；多 Trial 交付边界见 [多 Trial 验收记录](validation/2026-10-26-multitrial.md)。后续按 [逐步实施计划](next-implementation.md) 推进。
 

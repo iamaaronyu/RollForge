@@ -21,7 +21,7 @@ from scripts.backup_rollforge import (
 )
 
 
-def budget_database(parent: Path, rows: dict[str, int]):
+def budget_database(parent: Path, rows: dict[str, int | tuple[int, int, int]]):
     parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     parent.chmod(0o700)
     path = parent / "gateway.sqlite3"
@@ -29,11 +29,18 @@ def budget_database(parent: Path, rows: dict[str, int]):
         connection.execute(
             "CREATE TABLE session_usage ("
             "token_sha256 TEXT PRIMARY KEY, "
-            "used_requests INTEGER NOT NULL CHECK (used_requests >= 0))"
+            "used_requests INTEGER NOT NULL CHECK (used_requests >= 0), "
+            "used_cost_microusd INTEGER NOT NULL DEFAULT 0 CHECK (used_cost_microusd >= 0), "
+            "reserved_cost_microusd INTEGER NOT NULL DEFAULT 0 "
+            "CHECK (reserved_cost_microusd >= 0))"
         )
         connection.executemany(
-            "INSERT INTO session_usage(token_sha256, used_requests) VALUES (?, ?)",
-            rows.items(),
+            "INSERT INTO session_usage(token_sha256, used_requests, used_cost_microusd, "
+            "reserved_cost_microusd) VALUES (?, ?, ?, ?)",
+            [
+                (token_hash, value, 0, 0) if isinstance(value, int) else (token_hash, *value)
+                for token_hash, value in rows.items()
+            ],
         )
     path.chmod(0o600)
     return path
@@ -42,6 +49,17 @@ def budget_database(parent: Path, rows: dict[str, int]):
 def read_budget(path: Path):
     with sqlite3.connect(path) as connection:
         return dict(connection.execute("SELECT token_sha256, used_requests FROM session_usage"))
+
+
+def read_budget_state(path: Path):
+    with sqlite3.connect(path) as connection:
+        return {
+            row[0]: row[1:]
+            for row in connection.execute(
+                "SELECT token_sha256, used_requests, used_cost_microusd, reserved_cost_microusd "
+                "FROM session_usage"
+            )
+        }
 
 
 def test_budget_restore_merges_counters_monotonically_and_keeps_newer_rows(tmp_path):
@@ -69,6 +87,41 @@ def test_restoring_older_snapshot_never_resets_consumed_budget(tmp_path):
     restore_budget_database(backup, live, gateway_stopped=True, sessions_revoked=False)
 
     assert read_budget(live) == {token_hash: 9, later: 2}
+
+
+def test_budget_restore_merges_request_cost_and_pending_reservation_monotonically(tmp_path):
+    token_hash = "7" * 64
+    live = budget_database(tmp_path / "live-private", {token_hash: (4, 1200, 500)})
+    bundle = tmp_path / "cost-bundle"
+    bundle.mkdir(mode=0o700)
+    backup = bundle / "gateway-budget.sqlite3"
+    snapshot_sqlite(
+        budget_database(tmp_path / "source-private", {token_hash: (5, 900, 800)}), backup
+    )
+
+    restore_budget_database(backup, live, gateway_stopped=True, sessions_revoked=False)
+
+    assert read_budget_state(live) == {token_hash: (5, 1200, 800)}
+
+
+def test_snapshot_migrates_pre_cost_ledger_with_zero_cost_counters(tmp_path):
+    parent = tmp_path / "old-private"
+    parent.mkdir(mode=0o700)
+    parent.chmod(0o700)
+    old = parent / "gateway.sqlite3"
+    token_hash = "6" * 64
+    with sqlite3.connect(old) as connection:
+        connection.execute(
+            "CREATE TABLE session_usage (token_sha256 TEXT PRIMARY KEY, "
+            "used_requests INTEGER NOT NULL)"
+        )
+        connection.execute("INSERT INTO session_usage VALUES (?, 3)", (token_hash,))
+    old.chmod(0o600)
+    snapshot = tmp_path / "gateway-budget.sqlite3"
+
+    snapshot_sqlite(old, snapshot)
+
+    assert read_budget_state(snapshot) == {token_hash: (3, 0, 0)}
 
 
 def test_new_host_budget_restore_requires_all_sessions_revoked(tmp_path):

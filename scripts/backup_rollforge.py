@@ -64,16 +64,23 @@ def validate_budget_database(path: Path):
             columns = {row[1] for row in connection.execute("PRAGMA table_info(session_usage)")}
             if not {"token_sha256", "used_requests"}.issubset(columns):
                 raise BackupError("网关预算账本结构不符合当前契约")
+            used_cost = "used_cost_microusd" if "used_cost_microusd" in columns else "0"
+            reserved_cost = "reserved_cost_microusd" if "reserved_cost_microusd" in columns else "0"
             rows = connection.execute(
-                "SELECT token_sha256, used_requests FROM session_usage"
+                f"SELECT token_sha256, used_requests, {used_cost}, {reserved_cost} "
+                "FROM session_usage"
             ).fetchall()
-            for token_hash, used in rows:
+            for token_hash, used, used_microusd, reserved_microusd in rows:
                 if (
                     not isinstance(token_hash, str)
                     or len(token_hash) != 64
                     or any(char not in "0123456789abcdef" for char in token_hash)
                     or not isinstance(used, int)
                     or used < 0
+                    or not isinstance(used_microusd, int)
+                    or used_microusd < 0
+                    or not isinstance(reserved_microusd, int)
+                    or reserved_microusd < 0
                 ):
                     raise BackupError("网关预算账本包含无效记录")
     except sqlite3.Error:
@@ -86,6 +93,15 @@ def snapshot_sqlite(source: Path, destination: Path):
         with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as source_db:
             with sqlite3.connect(destination) as destination_db:
                 source_db.backup(destination_db)
+                columns = {
+                    row[1] for row in destination_db.execute("PRAGMA table_info(session_usage)")
+                }
+                for column in ("used_cost_microusd", "reserved_cost_microusd"):
+                    if column not in columns:
+                        destination_db.execute(
+                            f"ALTER TABLE session_usage ADD COLUMN {column} "
+                            "INTEGER NOT NULL DEFAULT 0 CHECK (" + column + " >= 0)"
+                        )
         os.chmod(destination, 0o600)
         with destination.open("rb") as stream:
             os.fsync(stream.fileno())
@@ -94,9 +110,18 @@ def snapshot_sqlite(source: Path, destination: Path):
         raise BackupError("网关预算账本快照失败") from None
 
 
-def sqlite_rows(path: Path) -> dict[str, int]:
+def sqlite_rows(path: Path) -> dict[str, tuple[int, int, int]]:
     with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
-        return dict(connection.execute("SELECT token_sha256, used_requests FROM session_usage"))
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(session_usage)")}
+        used_cost = "used_cost_microusd" if "used_cost_microusd" in columns else "0"
+        reserved_cost = "reserved_cost_microusd" if "reserved_cost_microusd" in columns else "0"
+        return {
+            row[0]: (row[1], row[2], row[3])
+            for row in connection.execute(
+                f"SELECT token_sha256, used_requests, {used_cost}, {reserved_cost} "
+                "FROM session_usage"
+            )
+        }
 
 
 def restore_budget_database(
@@ -125,16 +150,28 @@ def restore_budget_database(
         with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as source_db:
             with sqlite3.connect(temporary) as merged_db:
                 source_db.backup(merged_db)
+                columns = {row[1] for row in merged_db.execute("PRAGMA table_info(session_usage)")}
+                for column in ("used_cost_microusd", "reserved_cost_microusd"):
+                    if column not in columns:
+                        merged_db.execute(
+                            f"ALTER TABLE session_usage ADD COLUMN {column} "
+                            "INTEGER NOT NULL DEFAULT 0 CHECK (" + column + " >= 0)"
+                        )
                 if live.exists():
-                    with sqlite3.connect(f"file:{backup}?mode=ro", uri=True) as backup_db:
-                        backup_rows = backup_db.execute(
-                            "SELECT token_sha256, used_requests FROM session_usage"
-                        ).fetchall()
+                    backup_rows = [
+                        (token_hash, *values) for token_hash, values in sqlite_rows(backup).items()
+                    ]
                     merged_db.execute("BEGIN IMMEDIATE")
                     merged_db.executemany(
-                        "INSERT INTO session_usage(token_sha256, used_requests) VALUES (?, ?) "
+                        "INSERT INTO session_usage(token_sha256, used_requests, "
+                        "used_cost_microusd, "
+                        "reserved_cost_microusd) VALUES (?, ?, ?, ?) "
                         "ON CONFLICT(token_sha256) DO UPDATE SET used_requests = "
-                        "MAX(session_usage.used_requests, excluded.used_requests)",
+                        "MAX(session_usage.used_requests, excluded.used_requests), "
+                        "used_cost_microusd = MAX(session_usage.used_cost_microusd, "
+                        "excluded.used_cost_microusd), reserved_cost_microusd = "
+                        "MAX(session_usage.reserved_cost_microusd, "
+                        "excluded.reserved_cost_microusd)",
                         backup_rows,
                     )
                     merged_db.commit()
@@ -142,8 +179,13 @@ def restore_budget_database(
                     raise BackupError("恢复后的预算账本完整性检查失败")
         os.chmod(temporary, 0o600)
         merged_rows = sqlite_rows(temporary)
-        for token_hash, used in sqlite_rows(backup).items():
-            if merged_rows.get(token_hash, -1) < used:
+        for token_hash, counters in sqlite_rows(backup).items():
+            if any(
+                merged_value < backup_value
+                for merged_value, backup_value in zip(
+                    merged_rows.get(token_hash, (-1, -1, -1)), counters, strict=True
+                )
+            ):
                 raise BackupError("恢复后的模型请求预算小于备份值")
         with temporary.open("rb") as stream:
             os.fsync(stream.fileno())
