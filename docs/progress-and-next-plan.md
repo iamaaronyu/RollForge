@@ -93,7 +93,7 @@ Job/Trial 取消 API 与页面确认已实现：取消与完成使用同一 Tria
 
 每个切片顺序：明确不变量与验收 → 共享契约/迁移 → 服务与鉴权 → OpenAPI/消费者 → 真实数据库/存储验证 → 涉及主链则真实 Harbor/E2B/模型验收 → make check 与必要的 runtime-check → 凭证及公开适宜性审查 → 独立正常 commit/push → 更新证据。
 
-Registry API、版本发现/绑定页面，以及 Registry 绑定双 Trial 平台运行均已有验收。Linux 主机有 Hub/Web、PG、Silo 和私密配置，当前通过 Tailscale 地址可管理；数据库/对象存储/API 控制面验收完成，执行门保持关闭。下一步先建立有持久凭证管理、预算和网络隔离的常驻模型网关，再确认 E2B sandbox 到网关的受限连接与短时会话生命周期。当前实验性 `/32` CIDR override 曾导致 Sandbox placement 503；按先前恢复记录刷新 E2B API 后曾恢复，但本次重试仍 placement 失败，临时设置已回滚；不得把该路径投入常驻环境，须先查明 API/节点注册刷新流程并重做受控验收。随后完成真实取消清理、Worker/Scheduler 双进程与强制中断恢复。完整远端 PostgreSQL 回归为 38 passed、15 skipped；真实 MinIO 下载 API 仍需固定二进制或针对 Silo 的独立验收。加密备份卷未挂载且缺宿主 PG 客户端，先准备独立加密介质、容器化或宿主 PostgreSQL 16 客户端和隔离读回。双 Worker/并发 2、宿主故障与监控验收之后推进；实验比较、Failure Mining、训练导出、高级 Pause/Resume/Fork 和 RL 后置。详细未完成关卡见[部署记录](validation/2026-10-26-deployment-audit.md)。
+Registry API、版本发现/绑定页面，以及 Registry 绑定双 Trial 平台运行均已有验收。Linux 主机有 Hub/Web、PG、Silo 和私密配置，当前通过 Tailscale 地址可管理；数据库/对象存储/API 控制面验收完成，执行门保持关闭。2026-10-27 受控无凭证探针已验证 E2B Sandbox 可经临时单地址 allowlist 和单端口规则访问服务器网关地址；placement 503 在无活动 VM 时按固定恢复流程重启 E2B API 后恢复。临时 override、规则和监听器均已清理。此证据不等于持久网关、TLS/部署认证、token 费用预算或重启后防火墙恢复已完成。下一步部署有持久凭证管理与预算的常驻模型网关，并在限制规则可安全恢复的前提下验收短时会话签发、过期和撤销。随后完成真实取消清理、Worker/Scheduler 双进程与强制中断恢复。完整远端 PostgreSQL 回归为 38 passed、15 skipped；真实 MinIO 下载 API 仍需固定二进制或针对 Silo 的独立验收。加密备份卷未挂载且宿主缺少 PostgreSQL 16 客户端；先准备独立加密介质和匹配客户端，再完成隔离读回。双 Worker/并发 2、宿主故障与监控验收之后推进；实验比较、Failure Mining、训练导出、高级 Pause/Resume/Fork 和 RL 后置。详细未完成关卡见[部署记录](validation/2026-10-26-deployment-audit.md)。
 
 本批页面及查询验收见 [页面记录](validation/2026-10-06-s1-web.md)、[Registry 页面记录](validation/2026-10-26-registry-ui.md)；多 Trial 交付边界见 [多 Trial 验收记录](validation/2026-10-26-multitrial.md)。后续按 [逐步实施计划](next-implementation.md) 推进。
 

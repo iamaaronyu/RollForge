@@ -98,6 +98,6 @@ Hub/Web readiness 与首页均为 HTTP 200；Scheduler inactive/disabled。Hub �
 
 检查持久模型网关前置条件时发现，Worker 配置仍指向已停止的 Mac Tailscale 网关 `100.102.201.53:11441`；服务器没有部署 gateway 配置、预算账本或短时会话 Token。备份环境变量、独立挂载的加密备份介质及恢复目标配置也不存在，宿主缺少 PostgreSQL 16 客户端工具。因此目前不能启动平台 Worker 或 Scheduler。
 
-为复核 E2B 到服务器单地址网关的路径，先后执行了无凭证 HTTP 探针。默认 E2B 私网策略会阻断目标；按固定版本 E2B 文档临时加入目标 `/32` allowlist、仅限 TCP 11441 的 veth raw/nat 规则并重建 orchestrator 后，Sandbox 创建连续返回 placement 错误，探针未运行。此前的历史验收曾记录刷新 E2B API 后 placement 恢复，但目前尚未确认具体刷新操作，也未证实是缓存、节点兼容还是容量因素。故本次未重复重启 API 或其他 E2B 服务。
+为复核 E2B 到服务器单地址网关的路径，先后执行了无凭证 HTTP 探针。默认 E2B 私网策略会阻断目标；只重建带临时目标 `/32` allowlist 的 orchestrator 后，Sandbox 创建返回 placement 错误。根据历史验收确认安全刷新流程后，在无活动 Sandbox/Firecracker 时重启 E2B API；固定 SDK 的无互联网 Sandbox 创建/销毁 smoke 随即通过。再按固定版本 E2B 文档临时加入目标 `/32` allowlist，并用专属 veth raw/nat 规则仅放行 TCP 11441，Sandbox 成功访问服务器单地址上的常量 HTTP 探针；未发送模型请求或凭证。该结果验证了本次恢复顺序和受限单端口网络路径，但不能单独证明 placement 错误的内部根因。
 
-所有本次临时 Compose override 与防火墙规则均已清理，原 `compose.override.yaml` SHA256 未变；E2B Orchestrator 恢复 healthy，Firecracker 为 0。使用原配置单独运行 SDK Sandbox 创建/销毁 smoke 通过。这只证明普通 Sandbox placement 恢复，不证明到主机网关的路径可用。后续需先从固定部署定义和节点/API 日志中查明 placement 错误及安全的节点/API 刷新流程，再重复受控网络验收；不得持久启用全节点 CIDR 放行。正式执行入口继续关闭。
+所有本次临时 Compose override 与防火墙规则均已清理，原 `compose.override.yaml` SHA256 未变；E2B API/Orchestrator 均 healthy，CIDR 允许项不存在，带标记临时规则为 0，探针服务 inactive，Firecracker 为 0。该临时网关只证明独占测试节点的受限路径；尚未部署常驻网关、TLS/部署认证或 token 级费用预算，也未验证持久规则在重启后的安全恢复。不得把全节点 CIDR 放行作为生产配置。正式执行入口继续关闭。
