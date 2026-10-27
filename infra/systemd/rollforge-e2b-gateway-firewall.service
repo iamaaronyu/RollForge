@@ -6,13 +6,13 @@ Wants=network-online.target tailscaled.service
 After=network-online.target docker.service tailscaled.service
 PartOf=docker.service tailscaled.service
 ConditionPathExists=/etc/rollforge/e2b-gateway.env
-TimeoutStartSec=300
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+TimeoutStartSec=300
 EnvironmentFile=/etc/rollforge/e2b-gateway.env
-ExecStartPre=/bin/sh -c 'for attempt in $(seq 1 60); do status=$(docker inspect --format "{{.State.Health.Status}}" e2b-orchestrator-1 2>/dev/null || true); tailnet=$(ip -o -4 addr show dev tailscale0 2>/dev/null | grep -c "inet 100\." || true); if [ "$status" = healthy ] && [ "$tailnet" -gt 0 ]; then exit 0; fi; sleep 5; done; exit 1'
+ExecStartPre=/bin/sh -c 'for attempt in $(seq 1 60); do status=$(docker inspect --format "{{.State.Health.Status}}" e2b-orchestrator-1 2>/dev/null || true); tailnet=$(ip -o -4 addr show dev tailscale0 2>/dev/null | grep -c "inet 100" || true); if [ "$status" = healthy ] && [ "$tailnet" -gt 0 ]; then exit 0; fi; sleep 5; done; exit 1'
 ExecStart=/opt/rollforge/.venv/bin/python /opt/rollforge/scripts/e2b_gateway_firewall.py apply --gateway-ip $ROLLFORGE_MODEL_GATEWAY_IP
 ExecStop=/opt/rollforge/.venv/bin/python /opt/rollforge/scripts/e2b_gateway_firewall.py remove --gateway-ip $ROLLFORGE_MODEL_GATEWAY_IP
 
