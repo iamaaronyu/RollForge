@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import stat
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
@@ -18,6 +19,7 @@ from rollforge_api.execution_service import ExecutionService, LeaseRejected, Sub
 from rollforge_api.models import Execution, Trial
 from rollforge_schemas.domain import RevisionRef, TrialStatus
 from rollforge_schemas.execution import CreateJob, ExecutionSnapshot, LeaseIdentity, ResultCommit
+from rollforge_schemas.runnable import RunnableBinding
 from sqlalchemy import func, select, text, update
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -246,19 +248,33 @@ async def test_recovery_budget_and_service_restart(engine):
     assert (await restarted.get_job(job.job_id, job.owner_id)).trial.status == TrialStatus.FAILED
 
 
-async def test_sigkill_lease_holder_process_recovers_and_enforces_retry_budget(engine):
+async def test_sigkill_worker_once_recovers_and_enforces_retry_budget(engine, tmp_path):
     """A dead OS process loses its lease; recovery fences it and bounds retries."""
     async with engine.connect() as connection:
         schema = await connection.scalar(text("SELECT current_schema()"))
     process_env = {
         "ROLLFORGE_TEST_DATABASE_URL": os.environ["ROLLFORGE_TEST_DATABASE_URL"],
         "ROLLFORGE_TEST_SCHEMA": schema,
+        "ROLLFORGE_TEST_SPOOL": str(tmp_path / "worker-spool"),
         "PYTHONPATH": os.pathsep.join(filter(None, [str(ROOT), os.environ.get("PYTHONPATH", "")])),
     }
     if os.environ.get("PATH"):
         process_env["PATH"] = os.environ["PATH"]
     service = ExecutionService(engine)
-    job = request(max_executions=2).model_copy(update={"trial_count": 1})
+    job = request(max_executions=2)
+    binding = RunnableBinding(
+        task_archive_key="tasks/task.tar.gz",
+        task_archive_digest="sha256:" + "a" * 64,
+        model_base_url="https://gateway.invalid",
+    )
+    snapshot = job.snapshot.model_copy(
+        update={
+            "agent": job.snapshot.agent.model_copy(update={"digest": binding.agent_digest}),
+            "model": job.snapshot.model.model_copy(update={"digest": binding.model_digest}),
+            "runtime": binding,
+        }
+    )
+    job = job.model_copy(update={"snapshot": snapshot, "trial_count": 1})
     await service.create_job(job)
 
     async def claim_then_kill():
@@ -288,6 +304,9 @@ async def test_sigkill_lease_holder_process_recovers_and_enforces_retry_budget(e
 
     first = await claim_then_kill()
     assert first.fencing_token == 1
+    spool_lease = tmp_path / "worker-spool" / str(first.execution_id) / "lease.json"
+    assert spool_lease.is_file()
+    assert stat.S_IMODE(spool_lease.stat().st_mode) == 0o600
     await asyncio.sleep(1.2)
     assert await service.recover_expired() == 1
 
