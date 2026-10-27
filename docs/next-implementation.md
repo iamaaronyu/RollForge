@@ -9,7 +9,7 @@
 | 2 | 中文单任务创建与查询页 | 服务端审核目录、token 不进浏览器、真实数据库页面往返 | 已实现并通过本轮验收 |
 | 3 | 受控产物与轨迹 Viewer | 所有权、对象作用域、摘要与大小检查，失败定位 | 基础索引/文本、主轨迹时间线及浏览器内文本搜索、ATIF 多模态与内嵌子轨迹、受控外部 JSON 子轨迹按需读取、Hub 验证后的媒体预览/文件下载及 Job 评分统计已实现；外部子轨迹每次按需读取并限制 1 MiB，不自动遍历引用；详见 [外部子轨迹验收](validation/2026-10-27-external-subtrajectory.md) |
 | 4 | 不可变 Revision Registry 与批量展开 | 版本冻结、幂等展开、Retry 不增加样本数 | API、SDK、资产发现分页及中文 Registry 页已实现；真实 PostgreSQL 所有权/摘要/拒绝与分页测试通过；2026-10-27 在随机隔离数据库重新运行执行/Job API/Registry 回归为 30 passed，测试库已删除，见[记录](validation/2026-10-27-postgres-isolated-regression.md)。2026-10-27 Registry 绑定的真实双 Trial Job 已 2/2 完成（并发 1）；待扩展到多进程 Worker、更多样本与故障恢复，见[部署审计](validation/2026-10-26-deployment-audit.md) |
-| 5 | 持续 Worker 与容量调度 | 真双 Worker、背压、重启恢复、有界回收 | 有界常驻 Worker、FIFO 入队、退避、优雅停机与鉴权租约回收已实现；真实 PostgreSQL 执行/Job API/Registry/Worker 回归为 33 passed、1 skipped；部署中的 Silo 对象、上传中断恢复及 Hub 提交校验/回放为 14 passed、2 skipped，随机测试 bucket 与 schema 均已清理；常驻 Worker 进程、双 Worker Harbor/E2B、进程重启和全局容量验收仍待完成，见[Worker PostgreSQL 回归](validation/2026-10-27-worker-postgres-regression.md)、[Silo 集成验收](validation/2026-10-27-silo-integration.md)与[调度验收记录](validation/2026-10-26-scheduler.md) |
+| 5 | 持续 Worker 与容量调度 | 真双 Worker、背压、重启恢复、有界回收 | 有界常驻 Worker、FIFO 入队、退避、优雅停机与鉴权租约回收已实现；PostgreSQL 全局领取容量已实现，Linux 真实 PostgreSQL + Silo 完整集成 57 passed、2 skipped，随机测试 bucket 与 schema 均已清理；常驻双 Worker Harbor/E2B、进程重启和中断恢复仍待完成，见[Worker PostgreSQL 回归](validation/2026-10-27-worker-postgres-regression.md)、[Silo 集成验收](validation/2026-10-27-silo-integration.md)、[全局容量验收](validation/2026-10-27-global-execution-capacity.md)与[调度验收记录](validation/2026-10-26-scheduler.md) |
 | 6 | 部署与故障演练 | SIGKILL/掉电、限流、备份读回、监控与升级恢复 | Linux Hub/Web、PostgreSQL、Silo 对象存储已部署；独立端口、权限、Hub readiness、S3 角色隔离及数据容器重启读回已有现场证据。Hub/Web active，Scheduler inactive，写入/执行门全关。Mac 受限网关 LaunchAgent 已运行、会话为空，启动即创建的 SQLite 预算账本现已在 0600 权限下实机验证。PostgreSQL 容器内客户端的只读指纹、`pg_dump` stdout 和 `pg_restore` stdin 路径已实机验证；备份创建现会拒绝未挂载或无法验证 dm-crypt 的路径；Linux 节点的未挂载拒绝已实测，见[预检记录](validation/2026-10-27-backup-encryption-preflight.md)。加密备份卷、独立只读 S3 账号及真实创建/恢复仍未就绪。E2B 持久 `/32` 配置与单端口防火墙单元已实现并推送，但尚未在节点启用，需确认此设置作用于该节点所有 Sandbox 且仅用于独占 RollForge 节点。手动 E2B 无模型 SDK 恢复 smoke 已通过，见[记录](validation/2026-10-27-e2b-recovery-smoke.md)；真实双 Worker/取消、整机重启恢复及监控验收仍待完成 |
 | 并行前置 | 网关与权限加固 | TLS/部署认证、真实供应商费用对账、用户登录、Worker/对象权限 | 会话限时/限次/费用上限、单会话及全部撤销命令已实现；Mac 真实配置签发/撤销后即时 403 验收通过；一次真实 DeepSeek 响应按 usage 结算 21 微美元、预留归零。Sandbox 内会话生命周期、供应商账单对账、TLS 和部署身份认证仍待验收 |
 
@@ -19,7 +19,7 @@
 
 2026-10-26：新增 Job 多 Trial 样本数、确定性展开、列表分页和摘要；Execution 历史游标改为 Job 内单调序号，以容纳不同样本交错重试。数据库迁移安全回填既有单样本 Job，并在降级会丢失样本时拒绝回退。代码和 DB 验收完成；真实 Registry 绑定双 Trial 主链于 2026-10-27 完成 2/2。双 Worker、持续网关、更多样本和中断恢复仍待验收。
 
-2026-10-26：开始 S1 调度切片，增加有界持续 Worker、指数退避、SIGTERM 清理和 Worker 鉴权租约回收 API；队列按入队时间、Job ID、样本序号排序，重试重新入队到队尾。进程容量为本地上限，不代表多进程集群额度。真实双 Worker Harbor/E2B 和中断恢复仍需验证。
+2026-10-26：开始 S1 调度切片，增加有界持续 Worker、指数退避、SIGTERM 清理和 Worker 鉴权租约回收 API；队列按入队时间、Job ID、样本序号排序，重试重新入队到队尾。2026-10-27 加入 PostgreSQL advisory lock 保护的跨 Hub 全局领取容量，默认 1；多个 Hub 进程需使用相同配置。真实双 Worker Harbor/E2B、Worker/Scheduler 重启和中断恢复仍需验证，详见[全局容量验收](validation/2026-10-27-global-execution-capacity.md)。
 
 2026-10-26：增加 `/jobs/from-revisions`，把用户拥有的 Task/Agent/Model revision 安全绑定至部署者审核快照，并在执行快照中保留注册引用。普通 `/jobs` 拒绝带 `runtime` 的请求，防止用户绕过审核。Registry 网页和资产发现分页已完成；真实双 Trial 绑定运行证据见 2026-10-27 部署审计。
 
