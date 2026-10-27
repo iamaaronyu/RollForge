@@ -310,6 +310,32 @@ async def test_database_global_execution_limit_across_concurrent_claims(engine):
         assert replacement.trial_id not in {lease.trial_id for lease in leases}
 
 
+async def test_hundred_trial_job_paginates_and_claims_with_global_capacity(engine):
+    async with clients(engine, global_execution_limit=100) as (_, sdk, _, _, _):
+        body = job_request().model_copy(update={"trial_count": 100})
+        job = await sdk["user"].create_job(body)
+        assert job.trial_count == 100 and job.terminal_trial_count == 0
+        assert await sdk["user"].create_job(body) == job
+
+        trials = []
+        cursor = None
+        while True:
+            page = await sdk["user"].list_trials(job.job_id, limit=37, after=cursor)
+            trials.extend(page.items)
+            cursor = page.next_cursor
+            if cursor is None:
+                break
+        assert [trial.attempt_index for trial in trials] == list(range(100))
+        assert len({trial.trial_id for trial in trials}) == 100
+
+        claims = await gather(*(sdk["worker"].claim() for _ in range(100)))
+        leases = [lease for lease in claims if lease is not None]
+        assert len(leases) == 100
+        assert {lease.trial_id for lease in leases} == {trial.trial_id for trial in trials}
+        assert all(lease.snapshot == body.snapshot for lease in leases)
+        assert await sdk["worker"].claim() is None
+
+
 async def test_worker_recovery_api_requeues_only_expired_leases(engine):
     async with clients(engine) as (_, sdk, _, _, _):
         job = await sdk["user"].create_job(job_request())

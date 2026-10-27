@@ -8,11 +8,12 @@
 
 ## 验收结果
 
-- 本地完整 `make check`：**240 passed、56 skipped**；ruff、格式、OpenAPI 检查、前端类型检查和 Next.js 生产构建通过。56 项跳过需要可选的真实数据库/对象存储/历史 Harbor 样本环境。
-- Linux 节点真实 PostgreSQL + 部署中 Silo 的完整 `tests/integration`：**57 passed、2 skipped，22.67 秒**。其中包括两个独立 `ExecutionService` 实例竞争领取、全局上限阻止额外领取、完成后释放容量、过期租约在回收前占用容量，以及 FIFO 队列中 Retry 重新排队的行为。
+- 本地完整 `make check`：**240 passed、57 skipped**；`make runtime-check`：**9 passed**。ruff、格式、OpenAPI 检查、前端类型检查和 Next.js 生产构建通过。集成测试跳过项需要可选的真实数据库/对象存储/历史 Harbor 样本环境。
+- Linux 节点真实 PostgreSQL + 部署中 Silo 的完整 `tests/integration`：**58 passed、2 skipped，25.51 秒**。其中包括两个独立 `ExecutionService` 实例竞争领取、全局上限阻止额外领取、完成后释放容量、过期租约在回收前占用容量，以及 FIFO 队列中 Retry 重新排队的行为。
+- 新增 100 个逻辑 Trial 的真实数据库验收：Job 创建重放保持幂等；以 37 项分页完整遍历 0–99 并确认 ID 唯一；在全局领取容量 100 下同时发起 100 个领取请求，获得 100 个不同 Trial 的执行租约，快照相同，随后领取被容量上限阻止。该测试没有启动 Harbor/E2B Sandbox，证明的是 PostgreSQL Job 展开、分页和租约容量，不代表 100 路真实计算吞吐。
 - 测试仅使用随机隔离 PostgreSQL schema 与随机 `rollforge-test-*` bucket。运行前后同名前缀 bucket 数均为 **0**，测试遗留 bucket 数为 **0**，`test_execution_*` schema 残留数为 **0**。
 - 跳过项为共享 Silo 服务重启测试（不重启正式共享服务）和缺少历史 Harbor 原生输出样本的测试。
 
 ## 范围与限制
 
-该验收证明多个服务实例在共享 PostgreSQL 上按配置执行全局领取容量约束，并验证容量释放、过期回收边界与 FIFO Retry。它没有启动常驻双 Worker，没有进行两路并行 Harbor/E2B 任务、Worker/Scheduler 进程重启、宿主掉电或网络分区演练。现阶段正式执行门保持关闭；全局并发仍应按服务器资源设置，默认值为 1。
+该验收证明独立 `ExecutionService` 实例在共享 PostgreSQL 上按配置执行全局领取容量约束，并验证容量释放、过期回收边界、FIFO Retry 和 100 个逻辑 Trial 的数据库排队边界。它没有启动常驻双 Worker，没有进行两路或 100 路 Harbor/E2B 任务、Hub 多进程竞争、Worker/Scheduler 进程重启、宿主掉电或网络分区演练。现阶段正式执行门保持关闭；全局并发仍应按服务器资源设置，默认值为 1。
