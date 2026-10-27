@@ -136,6 +136,42 @@ sudo install -o rollforge -g rollforge -m 0600 /dev/null /var/lib/rollforge/priv
 
 `runtime.env` 只含短时受限 `ROLLFORGE_MODEL_SESSION_TOKEN`、`E2B_API_KEY` 和必要的 E2B endpoint 配置。直接 DeepSeek API key 不得放入 Worker 或 Runtime 配置。
 
+模型会话 Token 在可信 Mac 上由本地网关管理 CLI 签发，不是从 DeepSeek 控制台获取。确认 E2B 节点网络策略已获授权后，可在 Mac 的终端中生成短时、限次、限费用 Token，并通过 SSH 标准输入写入 Linux 私密环境文件。以下流程不回显 Token；先要求服务器环境文件权限正确、已有 E2B Key 且没有旧 Token。示例限制为 10 分钟、最多 15 个模型请求、总预算 0.05 美元；按本次验收需要再调低，不要扩大默认额度。
+
+```sh
+set -euo pipefail
+umask 077
+token_file="$(mktemp "$HOME/.rollforge/private/session.XXXXXX")"
+installed=0
+cleanup() {
+  if [ "$installed" -eq 0 ]; then
+    if [ -s "$token_file" ]; then
+      uv run python scripts/manage_gateway_sessions.py revoke \
+        --config "$HOME/.rollforge/private/gateway.json" \
+        < "$token_file" >/dev/null 2>&1 || true
+    fi
+    rm -f "$token_file"
+  fi
+}
+trap cleanup EXIT
+
+ssh -o BatchMode=yes tyu@100.106.244.122 \
+  'sudo -n test "$(sudo -n stat -c "%U:%G %a" /var/lib/rollforge/private/runtime.env)" = "rollforge:rollforge 600" && sudo -n grep -q "^E2B_API_KEY=." /var/lib/rollforge/private/runtime.env && ! sudo -n grep -q "^ROLLFORGE_MODEL_SESSION_TOKEN=" /var/lib/rollforge/private/runtime.env'
+uv run python scripts/manage_gateway_sessions.py issue \
+  --config "$HOME/.rollforge/private/gateway.json" \
+  --ttl-seconds 600 --max-requests 15 --max-cost-usd 0.05 \
+  > "$token_file"
+{
+  printf '\nROLLFORGE_MODEL_SESSION_TOKEN='
+  cat "$token_file"
+  printf '\n'
+} | ssh -o BatchMode=yes tyu@100.106.244.122 \
+  'sudo -n tee -a /var/lib/rollforge/private/runtime.env >/dev/null'
+installed=1
+```
+
+验收结束后，在 Mac 继续使用本地 token 文件撤销会话，再用 `sudoedit /var/lib/rollforge/private/runtime.env` 删除对应 Token 行；不要删除 E2B Key。最后执行 `rm -f "$token_file"` 并运行 `trap - EXIT`。如果传输失败，Shell trap 会撤销刚签发的 Token；检查并移除可能写入了一半的环境变量行后再重试。Token 到期也会由网关拒绝，但不替代主动撤销和清理。
+
 复制服务模板并先做静态检查：
 
 ```sh
