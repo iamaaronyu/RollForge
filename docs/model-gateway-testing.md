@@ -16,6 +16,25 @@
 2. 在 Linux 先设置受限防火墙：针对 Sandbox 的 `veth+` 流量、网关单个地址，raw PREROUTING 先允许 TCP 11441，再丢弃到该地址的其他流量。保留现有规则，不清空链；使用本次测试专属 comment，结束后按完整规则删除。
 3. 新建临时 Compose override，仅将 orchestrator 的 `ALLOW_SANDBOX_INTERNAL_CIDRS` 设为网关 IPv4 `/32`。禁止填写整个局域网网段。合并已有 override，重新创建 orchestrator；等待 healthy 和节点注册完成。若随后 Sandbox 创建返回 placement 503，先确认没有活动 Sandbox/Firecracker，再从 Compose 目录执行 `docker compose restart api`，等待 API healthy 后重试。该恢复顺序已在 2026-10-27 的远端无模型网络验收中复核；不要在有活动 Trial 时重启 API。
 4. 可信网关宿主创建 0700 忽略目录及 0600 配置。`upstream_key` 是真实 Key；`sessions` 以随机 token 的 SHA-256 为键，值包括 `model`、`expires_at`、`max_requests` 和 `max_cost_microusd`（会话累计费用上限，单位为微美元整数）。上限缺失或类型错误时该会话拒绝授权。不要把原始会话 token 写入配置，也不要把配置内容写到终端或提交。网关启动时就在同目录创建权限 0600 的 `<配置名>.sqlite3` 预算账本；即使尚未发生模型请求，也能形成明确的空预算状态。备份/恢复时需将配置和账本作为一组处理。重启不能重置已用次数或已用费用。
+   使用 `scripts/manage_gateway_sessions.py` 管理会话，不要手工编辑 `sessions`。命令只接受属当前用户且父目录 0700、配置 0600 的文件；更新使用文件锁和原子替换。有效期最多 1 小时、每会话请求最多 1000 次、费用上限最多 1000 美元。签发 Token 仅输出一次；建议直接捕获到权限 0600 的临时文件，避免进入终端记录：
+
+   ```sh
+   umask 077
+   token_file="$(mktemp /private/tmp/rollforge-session.XXXXXX)"
+   uv run python scripts/manage_gateway_sessions.py issue \
+     --config "$HOME/.rollforge/private/gateway.json" \
+     --ttl-seconds 300 --max-requests 5 --max-cost-usd 2 > "$token_file"
+   ```
+
+   将该文件内容通过安全的运行环境传给受控 Worker；不要打印或提交。撤销单个会话时从文件通过标准输入传递 Token；紧急清空所有会话使用 `revoke-all`。撤销后网关下一次授权即拒绝，账本的已用额度不会重置：
+
+   ```sh
+   uv run python scripts/manage_gateway_sessions.py revoke \
+     --config "$HOME/.rollforge/private/gateway.json" < "$token_file"
+   rm -f "$token_file"
+   ```
+
+   清空全部会话可运行 `uv run python scripts/manage_gateway_sessions.py revoke-all --config "$HOME/.rollforge/private/gateway.json"`。
 5. 运行 `scripts/model_gateway.py --config <私密配置路径> --host <网关地址> --port 11441`，日志仅记录状态码。Sandbox 环境的 `ANTHROPIC_API_KEY` 设置为会话 token，模型 base URL 指向网关。设置 `CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192`；固定 Harbor 已支持传入该变量，超过网关输出预算的请求会被拒绝。
 6. 执行 `examples/run_isolation_acceptance.py --run --separate-verifier --env-file <私密会话环境文件>`。可重复添加 `--blocked-url`，验证网关其他端口及控制面地址不可达。负向端口必须先从 Linux 宿主验证可访问，防止把服务未启动误判为网络隔离。
 7. 验收要求：无认证网关请求 403；真实模型调用评分 1.0；Agent 无真实上游 Key、E2B Key 和私密测试；独立 Verifier 无凭证；原始输出无凭证命中；结束后 Sandbox 和 Firecracker 为 0。
