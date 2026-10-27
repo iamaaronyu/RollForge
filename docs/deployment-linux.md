@@ -16,7 +16,7 @@ systemd 模板的基础验证见 [Linux systemd 部署模板验证](validation/2
 
 以下命令需要在目标 Linux 主机以管理员权限执行。先准备已审核的代码目录与固定依赖，再安装服务；不要把真实 `.env` 文件放进 Git checkout。
 
-部署前先确认权限：`sudo -n true` 成功才表示当前自动化会话可执行非交互式管理员操作。目标节点本次检查中该命令失败，因此自动化只做了只读检查，没有安装系统文件、创建账号、改防火墙或启动服务。需要管理员在受控终端执行本节的账号/目录/unit 安装命令；没有管理员协助时，部署保持阻塞。不要把 Docker socket/组权限当作 sudo 替代，也不要用它绕过系统服务与凭证权限边界。仓库目前只验收 systemd 系统级部署模板，尚无 rootless Docker 部署验收路径。
+首次部署前先确认权限：`sudo -n true` 成功才表示自动化会话可执行非交互式管理员操作。目标节点已完成账号、配置目录、独立数据服务和 Hub/Web systemd 安装；截至 2026-10-27，当前会话的非交互式 sudo 可用，Hub/Web 正常运行。下列命令供新节点或重装使用；目标节点现状及未通过关卡见[部署验收记录](validation/2026-10-26-deployment-audit.md)。不要把 Docker socket/组权限当作 sudo 替代，也不要用它绕过系统服务与凭证权限边界。仓库目前只验收 systemd 系统级部署模板，尚无 rootless Docker 部署验收路径。
 
 ```sh
 sudo useradd --system --home-dir /var/lib/rollforge --create-home --shell /usr/sbin/nologin rollforge
@@ -192,7 +192,7 @@ sudo journalctl -u rollforge-hub.service -u rollforge-scheduler.service --since 
 
 开放单 Trial 执行前，必须另行通过真实 PostgreSQL、对象存储、Hub 鉴权、Harbor/E2B 与受限模型网关验收，并确认重启恢复演练。之后由操作者在 root 管理的 `hub.env` 打开写入门，在 `worker.env` 同时打开 Worker 和 Scheduler 开关；本仓库模板本身不启用这些开关。遵循 [Worker 验证记录](validation/2026-10-06-s1-worker.md) 与 [多 Trial 验收手册](multitrial-acceptance.md)。
 
-正式开门前逐项留存可复核证据：数据库迁移和真实租约事务测试；对象存储 Hub/Worker 权限分离、上传/读取/摘要校验和重启后读回；USER/WORKER Token 鉴权、轮换与凭证扫描；受限网关真实模型调用、无效/过期会话拒绝及预算账本重启保留；`native-ready.json`、`pending-commit.json` 的进程/主机恢复、租约回收与备份读回。任一项未通过，三个开关继续为 false。当前目标节点尚未进行这些真实服务验收。
+正式开门前逐项留存可复核证据：数据库迁移和真实租约事务测试；对象存储 Hub/Worker 权限分离、上传/读取/摘要校验和重启后读回；USER/WORKER Token 鉴权、轮换与凭证扫描；受限网关真实模型调用、无效/过期会话拒绝及预算账本重启保留；`native-ready.json`、`pending-commit.json` 的进程/主机恢复、租约回收与备份读回。任一项未通过，三个开关继续为 false。目标节点已有数据库/存储/API 控制面验收，但真实平台 Worker 多 Trial、网关常驻访问、加密备份恢复和宿主故障演练仍未完成；当前四个写入/执行门全关。
 
 ## 升级与恢复
 

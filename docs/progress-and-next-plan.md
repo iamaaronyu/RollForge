@@ -1,12 +1,12 @@
 # 开发进展与后续计划
 
-更新日期：2026-10-26。依据已提交代码、专项验收记录及本轮多 Trial 开发；本文汇总当前事实和建议开发顺序，不把实验验收等同于生产开放。
+更新日期：2026-10-27。依据已提交代码、专项验收记录及远端部署回归；本文汇总当前事实和建议开发顺序，不把实验验收等同于生产开放。
 
 ## 当前结论
 
 RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → PostgreSQL 执行权 → Worker → 固定 Harbor/E2B → Claude Code → 受限 DeepSeek 会话 → 独立 Verifier → MinIO 原始产物 → Hub 终态。S0 在可信局域网、审核任务、并发 1 范围完成；S1 单 Trial 核心及第六个最小业务页面已实现；页面用合成数据完成真实浏览器/数据库往返，执行侧已有独立真实模型验收。
 
-当前是可复现的实验执行底座。网页已支持受控任务创建、列表、评分、执行历史、用户取消，以及 Registry 资产登记、版本浏览和基于私有 revision 的 Job 创建；Run 仍只能匹配部署者审核目录。Job 可创建 1–1000 个确定性 Trial 并分页查看。单进程有界持续调度、FIFO 队列和租约恢复已实现；双 Worker Harbor/E2B 链、平台 Worker 多 Trial 主链及持久网关部署仍需验收。Registry API/UI、网关预算、多 Trial 验收工具及取消 API 已由真实 PostgreSQL 专项测试、类型检查和生产构建验证。2026-10-26 最新完整 `make check` 为 185 passed、51 skipped，前端类型检查和生产构建通过；`make runtime-check` 为 9 passed。取消切片另有 3 项真实 PostgreSQL API/竞争测试与 1 项迁移往返/元数据比对通过。跳过项包括未提供真实 PostgreSQL/MinIO 环境及历史 Harbor 轨迹样本，不计作真实存储或运行验收。Linux 主机可经用户指定的 Tailscale 地址访问；详细部署与运行证据见专项验收记录。正式执行入口保持关闭。
+当前是可复现的实验执行底座。网页已支持受控任务创建、列表、评分、执行历史、用户取消，以及 Registry 资产登记、版本浏览和基于私有 revision 的 Job 创建；Run 仍只能匹配部署者审核目录。Job 可创建 1–1000 个确定性 Trial 并分页查看。单进程有界持续调度、FIFO 队列和租约恢复已实现；双 Worker Harbor/E2B 链、平台 Worker 多 Trial 主链及持久网关部署仍需验收。2026-10-27 完整 `make check` 为 185 passed、52 skipped，前端类型检查和生产构建通过；`make runtime-check` 为 9 passed。目标机隔离 PostgreSQL 全集成为 38 passed、15 skipped，目标 Runtime 契约为 9 passed。跳过项包括独立 MinIO 二进制和历史 Harbor 轨迹样本，不能计作真实 S3 API 下载验收。目标 Linux 已部署 Hub/Web、PostgreSQL、Silo 和 loopback 服务，当前代码 `a613c05`；Hub/Web readiness/首页均为 200，Scheduler 与全部写入/执行门保持关闭。目标 PostgreSQL 中 Job、Trial、Execution 和 Registry 资产仍为空；暂无批准的 Task archive/revision。加密备份卷与 PG 客户端尚未准备，常驻模型网关和 E2B 持久网络访问也未验收。正式执行入口保持关闭。
 
 ## 已完成的开发项
 
@@ -19,7 +19,7 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 | S0 真实执行 | 示例任务、原生结果解析、评分与零分、Agent/Verifier 故障、超时、重复取消清理 | 有真实模型/E2B 证据；零分与基础设施失败分开 |
 | 凭证与验证隔离 | Mac 网关保留上游 Key，Sandbox 使用短期受限会话，独立 Verifier，网络负向探测与输出凭证扫描 | 会话限期、限次与输出限制已实现；SQLite 账本原子持久化请求次数。网关仍为 LAN HTTP，缺部署认证、token 级费用预算及生产密钥管理 |
 | 部署恢复 | 服务重启、宿主重启后人工恢复隧道与防火墙，再次真实运行 | 验证的是人工恢复流程，无人值守恢复尚未实现 |
-| Linux 服务化部署材料 | Hub loopback API、单并发 Scheduler 的 systemd 模板，分离 Hub/Worker/Runtime 私密配置，升级与本地 spool 恢复手册 | 模板语法已在目标机验证；RollForge 目录、凭证和服务尚未安装，未开放执行。详见 [Linux 部署记录](validation/2026-10-26-linux-deployment.md) |
+| Linux 服务化部署 | Hub/Web loopback systemd、独立 PostgreSQL/Redis/S3 兼容存储、凭证分离及恢复手册 | 目标机服务已安装，Hub/Web active、数据容器健康；S3 权限与容器重启读回通过。Scheduler inactive、所有写入/执行门关闭。加密备份读回、常驻网关及平台 Worker 真实多 Trial 未验收，详见[部署记录](validation/2026-10-26-deployment-audit.md) |
 | Job/Trial 取消 | USER API、Python SDK、任务详情页确认按钮；运行中撤销租约并标记 Execution CANCELLED | PostgreSQL 事务、并发完成互斥与迁移回退/重放通过；真实 E2B 清理时延、SIGKILL/掉电和孤儿 Sandbox 验收待完成。详见 [取消验收记录](validation/2026-10-26-job-cancellation.md) |
 | 领域契约 | Job/Trial/Execution、Revision 引用、不可变快照、状态机、租约与 fencing、RunnableBinding | Retry 创建新 Execution，保留逻辑 Trial/Attempt；快照不接受任意凭证字段 |
 | PostgreSQL | 表、索引、约束、可回退迁移；创建、领取、续租、完成、有界过期回收 | 真实竞争、跳过锁、旧执行拒绝、零分与幂等、预算耗尽和迁移往返通过 |
@@ -93,7 +93,7 @@ Job/Trial 取消 API 与页面确认已实现：取消与完成使用同一 Tria
 
 每个切片顺序：明确不变量与验收 → 共享契约/迁移 → 服务与鉴权 → OpenAPI/消费者 → 真实数据库/存储验证 → 涉及主链则真实 Harbor/E2B/模型验收 → make check 与必要的 runtime-check → 凭证及公开适宜性审查 → 独立正常 commit/push → 更新证据。
 
-Registry API 与版本发现/绑定页面已完成，真实 2-Trial 验收脚本已补齐并默认禁止执行。Linux systemd 模板和恢复手册已提交；目标主机当前没有 RollForge 安装目录、服务配置或已安装单元，SSH 用户可用 Docker 但没有免交互 sudo；持久 systemd 服务安装需管理员完成一次性准备。下一项执行交付是安全配置独立 Hub/PostgreSQL/对象存储与受限模型会话，再于 Linux 上执行并发 1 的真实多 Trial Harbor/E2B 运行、Job 取消清理与重启恢复验收；双 Worker/并发 2 需资源充足的主机。执行验收前需要有效的 Hub/Worker/S3 凭证与短期 DeepSeek 受限会话；本机目前仅有 `.env.spike` 的直接上游/E2B 参数，缺 Hub/Worker/S3 与受限会话配置。凭证应写入受保护本机/服务器文件，不经聊天传递。在此期间继续完成不依赖真实 Sandbox 的恢复和运维能力。实验比较、Failure Mining、训练导出、高级 Pause/Resume/Fork 和 RL 后置。工期按每个切片验收后再估算，当前测试主机容量与网关生产条件不能作为已具备的前提。
+Registry API 与版本发现/绑定页面已完成，真实多 Trial 验收脚本已补齐并默认禁止执行。Linux 主机已有 Hub/Web、PG、Silo 和私密配置，当前通过 Tailscale 地址可管理；数据库/对象存储/API 控制面验收完成，执行门保持关闭。接下来需准备可复核的公开 hello-task Task archive 与部署审批绑定，部署常驻模型网关及最小范围 E2B 网络路径，确认短时模型会话有效，再执行并发 1 的两 Trial 平台 Worker→Harbor/E2B→模型→对象存储→Hub 验收、取消清理和故障恢复。完整远端 PostgreSQL 回归现为 38 passed、15 skipped；真实 MinIO 下载 API 仍需固定二进制或针对 Silo 的独立验收。加密备份卷未挂载且缺宿主 PG 客户端；在真实运行数据形成前先准备加密备份与隔离读回。双 Worker/并发 2、宿主掉电与监控验收之后推进；实验比较、Failure Mining、训练导出、高级 Pause/Resume/Fork 和 RL 后置。详细未完成关卡见[部署记录](validation/2026-10-26-deployment-audit.md)。
 
 本批页面及查询验收见 [页面记录](validation/2026-10-06-s1-web.md)、[Registry 页面记录](validation/2026-10-26-registry-ui.md)；多 Trial 交付边界见 [多 Trial 验收记录](validation/2026-10-26-multitrial.md)。后续按 [逐步实施计划](next-implementation.md) 推进。
 

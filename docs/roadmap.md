@@ -7,6 +7,6 @@
 5. **S4**：取消与清理、故障测试、监控、部署与运行手册，完成 MVP 验收。
 6. 后续：企业治理、实验比较、数据挖掘和训练导出。
 
-2026-10-26：S0 在可信 LAN、并发 1 范围完成；S1 单 Trial Worker 主链、存储/提交恢复及最小中文任务页面已有验收证据。S2 Manifest、原始输出与上传恢复已实现，基础 Viewer/主轨迹时间线、浏览器内轨迹文本搜索、安全媒体预览及有界内嵌子轨迹展开已实现。媒体预览仅允许读取 Manifest 中登记的图片/音频文件，单文件上限 8 MiB；下载仅允许 Manifest 文件、完整校验摘要并限制为 64 MiB。真实 PostgreSQL/对象存储验收仍待完成。三类 Registry、受审核目录约束的 Registry 运行绑定、资产版本网页、Job 内确定性多 Trial 展开和单进程 FIFO 调度已实现；真实多 Trial/双 Worker Harbor 验收、进程故障恢复仍待完成。外部子轨迹和统计聚合仍待开发。Linux 部署补充了 E2B 避让端口、Web loopback systemd unit 和密钥静默预检；目标主机安装仍待管理员配置与真实验收。正式执行入口保持关闭。当前进展及细化顺序见 [开发进展与后续计划](progress-and-next-plan.md)。
+2026-10-27：S0 在可信 LAN、并发 1 的直接 Harbor 运行范围完成；S1 单 Trial Worker 主链、存储/提交恢复及中文任务页面已有验收证据。S2 Manifest、原始输出与上传恢复已实现，Viewer 支持轨迹搜索、安全媒体预览、有界内嵌子轨迹和 64 MiB Manifest 文件下载。Hub/Web、PostgreSQL 与 S3 兼容对象存储已部署，真实 PostgreSQL 租约/Registry/API 集成测试通过；远端最近回归 38 passed、15 skipped。三类 Registry、审核运行绑定、确定性多 Trial 展开和单进程 FIFO 调度已实现；真实平台 Worker 多 Trial、双 Worker、持续网关路径与故障恢复仍未完成。目标数据库尚无 Registry revision、审核 Task archive 或业务 Job；加密备份/隔离读回也未验收。外部子轨迹和统计聚合仍待开发。正式执行入口保持关闭。当前进展及细化顺序见 [开发进展与后续计划](progress-and-next-plan.md)。
 
 完整流程见 implementation-plan.md，运行命令见 spike.md，本地部署要求见 local-testing.md。高级 Pause/Resume/Fork 和 RL 继续后移。

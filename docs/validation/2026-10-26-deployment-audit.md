@@ -45,3 +45,13 @@
 5. **生产用户与数据边界未验收**：当前是 loopback/SSH 隧道单用户静态 Token 页面，无多用户登录；缺少实际产物与轨迹，线上详情/Viewer 不能完成带数据浏览器验收。正式开放仍依赖既定权限、网关与恢复关卡。
 
 后续应先补齐备份设施/客户端及审核输入，再进行隔离恢复与受控真实执行；本记录不批准开启正式执行入口。
+
+## 2026-10-27 更新部署与远端数据库回归
+
+部署已按 GitHub `main` 快进到 `a613c05`；升级前远端代码引用 `4a9f2fb` 已保存为仅本机部署回退引用。升级仅包含先前 Viewer/轨迹文件读取和取消 API 竞争修复，没有数据库迁移或依赖锁变化。Next.js 生产构建通过；Hub/Web 重启后 health/readiness 与 Web 首页均为 HTTP 200，Scheduler inactive，Hub 写入、Worker 执行、Scheduler 和 Web 实验开关均为 false。Git 工作区清洁。配置文件名、变量状态和权限已只读检查，未输出任何私密值。
+
+固定 Harbor/E2B Runtime 离线契约测试在远端为 9 passed；Worker 与 Scheduler import-only 检查通过。没有创建 Sandbox 或调用模型。
+
+远端 PostgreSQL 完整集成测试在随机隔离 schema 中运行，测试结束自动删除 schema：修复前 36 passed、15 skipped、1 failed，失败定位到“完成先提交后，取消已完成 Job 仍返回成功”的终态语义问题。修复 `a613c05` 部署后重跑为 **38 passed、15 skipped、0 failed**。15 项跳过包括需要固定 MinIO 测试二进制的 Silo 对象存储用例及缺少历史 Harbor 轨迹样本的用例。测试不修改既有业务表；运行库的 Job、Trial、Execution、Registry Asset/Revision 仍均为 0，迁移版本为 `0005_cancelled_executions`。
+
+状态复核仍未满足真实多 Trial 前置条件：目标机没有 Registry revision、获批 Task archive 或部署审批绑定；上一次临时模型网关会话/网络规则已恢复原状，常驻网关路径和当前会话有效性未验收。`/mnt/rollforge-backups` 仍非加密挂载卷，宿主 PG 备份客户端未安装，因此没有可用的加密备份/隔离恢复证据。正式执行门保持关闭；不得把本轮控制面部署和数据库竞争测试计作真实 Worker→Harbor/E2B→模型多 Trial 验收。
