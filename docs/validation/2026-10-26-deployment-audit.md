@@ -91,3 +91,13 @@ Hub/Web readiness 与首页均为 HTTP 200；Scheduler inactive/disabled。Hub �
 3. **恢复与容量关卡**：整机重启、Worker/Scheduler 强制中断后的恢复，以及 8 GiB 主机上的资源/费用上限仍待单独验收。
 
 因此，本轮证明了真实平台双 Trial 功能闭环，但不批准打开常驻执行入口；上述运行与灾备关卡通过前，所有执行门保持关闭。
+
+## 2026-10-27 后续只读状态与受限网络重试
+
+后续只读复核确认 PostgreSQL 保留 2 个 Job、4 个 Trial、4 个 Execution、3 个 Registry 资产和 4 个 Revision；Trial 为 2 个 `COMPLETED`、2 个 `FAILED`，Execution 为 2 个 `COMPLETED`、2 个 `EXPIRED`。前两项成功记录对应上文 2/2 Registry 绑定闭环，失败/过期记录来自先前缺少独立 Verifier 的试跑。没有活动 Firecracker。Hub/Web 和数据服务健康，Scheduler 与 Hub 写入、Worker 执行、Web 实验开关保持关闭。
+
+检查持久模型网关前置条件时发现，Worker 配置仍指向已停止的 Mac Tailscale 网关 `100.102.201.53:11441`；服务器没有部署 gateway 配置、预算账本或短时会话 Token。备份环境变量、独立挂载的加密备份介质及恢复目标配置也不存在，宿主缺少 PostgreSQL 16 客户端工具。因此目前不能启动平台 Worker 或 Scheduler。
+
+为复核 E2B 到服务器单地址网关的路径，先后执行了无凭证 HTTP 探针。默认 E2B 私网策略会阻断目标；按固定版本 E2B 文档临时加入目标 `/32` allowlist、仅限 TCP 11441 的 veth raw/nat 规则并重建 orchestrator 后，Sandbox 创建连续返回 placement 错误，探针未运行。此前的历史验收曾记录刷新 E2B API 后 placement 恢复，但目前尚未确认具体刷新操作，也未证实是缓存、节点兼容还是容量因素。故本次未重复重启 API 或其他 E2B 服务。
+
+所有本次临时 Compose override 与防火墙规则均已清理，原 `compose.override.yaml` SHA256 未变；E2B Orchestrator 恢复 healthy，Firecracker 为 0。使用原配置单独运行 SDK Sandbox 创建/销毁 smoke 通过。这只证明普通 Sandbox placement 恢复，不证明到主机网关的路径可用。后续需先从固定部署定义和节点/API 日志中查明 placement 错误及安全的节点/API 刷新流程，再重复受控网络验收；不得持久启用全节点 CIDR 放行。正式执行入口继续关闭。

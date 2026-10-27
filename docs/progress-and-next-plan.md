@@ -1,12 +1,12 @@
 # 开发进展与后续计划
 
-更新日期：2026-10-27。依据已提交代码、专项验收记录及远端部署回归；本文汇总当前事实和建议开发顺序，不把实验验收等同于生产开放。
+更新日期：2026-10-27。依据已提交代码、专项验收记录及远端只读核对；本文汇总当前事实和建议开发顺序，不把一次受控实验验收等同于生产开放。
 
 ## 当前结论
 
 RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → PostgreSQL 执行权 → Worker → 固定 Harbor/E2B → Claude Code → 受限 DeepSeek 会话 → 独立 Verifier → MinIO 原始产物 → Hub 终态。S0 在可信局域网、审核任务、并发 1 范围完成；S1 单 Trial 核心及第六个最小业务页面已实现；页面用合成数据完成真实浏览器/数据库往返，执行侧已有独立真实模型验收。
 
-当前是可复现的实验执行底座。网页已支持受控任务创建、列表、评分、执行历史、用户取消，以及 Registry 资产登记、版本浏览和基于私有 revision 的 Job 创建；Run 仍只能匹配部署者审核目录。Job 可创建 1–1000 个确定性 Trial 并分页查看；Job 汇总已覆盖终态、有效评分和逐指标覆盖，重试不会重复计入。单进程有界持续调度、FIFO 队列和租约恢复已实现；双 Worker Harbor/E2B 链、平台 Worker 多 Trial 主链及持久网关部署仍需验收。2026-10-27 完整 `make check` 为 191 passed、54 skipped，前端类型检查和生产构建通过；Job 汇总的 Retry 用例及外部轨迹 API 分别在隔离 PostgreSQL 16、PostgreSQL 16 + Silo 临时环境通过。`make runtime-check` 为 9 passed。独立 MinIO fixture 和历史 Harbor 轨迹样本仍跳过；外部轨迹路径已用 Silo 真实 API 验收，不代表 MinIO 兼容性矩阵已全跑。目标 Linux Hub/Web、PostgreSQL、Silo 和 loopback 服务运行代码 `d209366`；Hub readiness 与 Web 首页 200，Scheduler 与全部写入/执行门保持关闭。升级验收见[记录](validation/2026-10-27-linux-upgrade.md)。目标 PostgreSQL 中 Job、Trial、Execution 和 Registry 资产仍为空；暂无批准的 Task archive/revision。加密备份卷与 PG 客户端尚未准备，常驻模型网关和 E2B 持久网络访问也未验收。正式执行入口保持关闭。
+当前是可复现的实验执行底座。网页已支持受控任务创建、列表、评分、执行历史、用户取消，以及 Registry 资产登记、版本浏览和基于私有 revision 的 Job 创建；Run 仍只能匹配部署者审核目录。Job 可创建 1–1000 个确定性 Trial 并分页查看；Job 汇总已覆盖终态、有效评分和逐指标覆盖，重试不会重复计入。单进程有界持续调度、FIFO 队列和租约恢复已实现；2026-10-27 已通过一次 Registry 绑定的真实双 Trial Harbor/E2B/DeepSeek 平台 Worker 闭环，2/2 完成、奖励均为 1.0、并发为 1。双 Worker Harbor/E2B、跨进程容量约束、持久网关部署及故障恢复仍需验收。2026-10-27 完整 `make check` 为 191 passed、54 skipped，前端类型检查和生产构建通过；Job 汇总的 Retry 用例及外部轨迹 API 分别在隔离 PostgreSQL 16、PostgreSQL 16 + Silo 临时环境通过。`make runtime-check` 为 9 passed。独立 MinIO fixture 和历史 Harbor 轨迹样本仍跳过；外部轨迹路径已用 Silo 真实 API 验收，不代表 MinIO 兼容性矩阵已全跑。目标 Linux Hub/Web、PostgreSQL、Silo 和 loopback 服务运行代码 `d209366`；Hub readiness 与 Web 首页 200，Scheduler 与全部写入/执行门保持关闭。升级验收见[记录](validation/2026-10-27-linux-upgrade.md)。本轮只读核对的数据库计数为 2 Job、4 Trial、4 Execution、3 Registry 资产、4 Revision；Trial 状态为 2 完成、2 失败，Execution 状态为 2 完成、2 过期。加密备份卷与 PG 客户端尚未准备，常驻模型网关和 E2B 持久网络访问也未验收。正式执行入口保持关闭。
 
 ## 已完成的开发项
 
@@ -31,9 +31,9 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 | Worker | 单次领取、续租、任务归档校验、凭证白名单、独立 Runtime、上传与 pending-commit、resume | 真实 HTTP 主链通过；修复 venv 解释器解析和 Mac 系统代理问题 |
 | 真实 Worker 故障验收 | reward 1.0、0.0、提交响应丢失后恢复、协作式取消清理、同 Trial 新 Execution Retry、旧提交 409 | Sandbox/Firecracker 均为 0；协作取消不代表 Worker/Runtime SIGKILL 或掉电清理已通过 |
 | 前端业务页 | 中文任务创建/列表/详情、服务端审核目录、Execution 历史与生成类型 | 合成数据浏览器验收通过；已有基础产物和主轨迹 Viewer；仍无登录、轮询 |
-| 多 Trial Job | `trial_count` 1–1000、快照确定性展开、样本分页、Job 汇总计数及 Job 级 Execution 游标；页面可创建并展示样本 | 真实 PostgreSQL 创建、幂等、分页、领取、完成及 Retry 身份验收通过；多样本真实 Harbor/E2B/模型验收仍待完成 |
+| 多 Trial Job | `trial_count` 1–1000、快照确定性展开、样本分页、Job 汇总计数及 Job 级 Execution 游标；页面可创建并展示样本 | 真实 PostgreSQL 验收通过；Registry 绑定的真实 Harbor/E2B/DeepSeek 双 Trial Job 已 2/2 完成（并发 1）；多进程 Worker、容量及恢复仍待验收 |
 | 持续调度 | 有界常驻 Worker、空队列轮询、失败退避、优雅停机、FIFO 队列和租约自动回收 | PostgreSQL FIFO、双领取竞争、回收 API 与迁移通过；真实双 Worker Harbor/E2B、进程重启、全局容量限制仍待验收 |
-| Registry 运行绑定与网页 | 用户可登记不可变 Task/Agent/Model 版本、浏览资产及最近 100 个 revision，并基于版本提交 Job；Hub 校验所有权、digest 和部署审核目录；直传可运行快照被拒绝 | 真实 PostgreSQL 的分页、所有权、摘要、审核不匹配及拒绝绕过用例通过；Next 类型检查和生产构建通过。真实多 Trial Harbor/E2B/模型验收仍待完成；网页仍是单用户静态 USER token 模式 |
+| Registry 运行绑定与网页 | 用户可登记不可变 Task/Agent/Model 版本、浏览资产及最近 100 个 revision，并基于版本提交 Job；Hub 校验所有权、digest 和部署审核目录；直传可运行快照被拒绝 | 真实 PostgreSQL 的分页、所有权、摘要、审核不匹配及拒绝绕过用例通过；Registry 绑定的真实双 Trial 平台运行已通过 2/2；网页仍是单用户静态 USER token 模式 |
 
 此前各切片验收记录：调度器 `make check` 181 passed、2 skipped，`make runtime-check` 9 passed；Registry 绑定 `make check` 184 passed、2 skipped；Registry 页面 170 passed、16 skipped；加入多 Trial 验收工具时 `make check` 为 173 passed、16 skipped、1 项 Starlette/httpx 弃用警告。该轮 16 项跳过包括未提供固定 MinIO 测试二进制及历史 Harbor 轨迹样本；真实 PostgreSQL 迁移与 API 测试均运行通过。以往专用 MinIO 验收仍保留在对应历史记录中，不把跳过计作真实 MinIO 验收。当前最新完整检查结果见本文顶部。
 
@@ -93,7 +93,7 @@ Job/Trial 取消 API 与页面确认已实现：取消与完成使用同一 Tria
 
 每个切片顺序：明确不变量与验收 → 共享契约/迁移 → 服务与鉴权 → OpenAPI/消费者 → 真实数据库/存储验证 → 涉及主链则真实 Harbor/E2B/模型验收 → make check 与必要的 runtime-check → 凭证及公开适宜性审查 → 独立正常 commit/push → 更新证据。
 
-Registry API 与版本发现/绑定页面已完成，真实多 Trial 验收脚本已补齐并默认禁止执行。Linux 主机已有 Hub/Web、PG、Silo 和私密配置，当前通过 Tailscale 地址可管理；数据库/对象存储/API 控制面验收完成，执行门保持关闭。接下来需准备可复核的公开 hello-task Task archive 与部署审批绑定，部署常驻模型网关及最小范围 E2B 网络路径，确认短时模型会话有效，再执行并发 1 的两 Trial 平台 Worker→Harbor/E2B→模型→对象存储→Hub 验收、取消清理和故障恢复。完整远端 PostgreSQL 回归现为 38 passed、15 skipped；真实 MinIO 下载 API 仍需固定二进制或针对 Silo 的独立验收。加密备份卷未挂载且缺宿主 PG 客户端；在真实运行数据形成前先准备加密备份与隔离读回。双 Worker/并发 2、宿主掉电与监控验收之后推进；实验比较、Failure Mining、训练导出、高级 Pause/Resume/Fork 和 RL 后置。详细未完成关卡见[部署记录](validation/2026-10-26-deployment-audit.md)。
+Registry API、版本发现/绑定页面，以及 Registry 绑定双 Trial 平台运行均已有验收。Linux 主机有 Hub/Web、PG、Silo 和私密配置，当前通过 Tailscale 地址可管理；数据库/对象存储/API 控制面验收完成，执行门保持关闭。下一步先建立有持久凭证管理、预算和网络隔离的常驻模型网关，再确认 E2B sandbox 到网关的受限连接与短时会话生命周期。当前实验性 `/32` CIDR override 曾导致 Sandbox placement 503；按先前恢复记录刷新 E2B API 后曾恢复，但本次重试仍 placement 失败，临时设置已回滚；不得把该路径投入常驻环境，须先查明 API/节点注册刷新流程并重做受控验收。随后完成真实取消清理、Worker/Scheduler 双进程与强制中断恢复。完整远端 PostgreSQL 回归为 38 passed、15 skipped；真实 MinIO 下载 API 仍需固定二进制或针对 Silo 的独立验收。加密备份卷未挂载且缺宿主 PG 客户端，先准备独立加密介质、容器化或宿主 PostgreSQL 16 客户端和隔离读回。双 Worker/并发 2、宿主故障与监控验收之后推进；实验比较、Failure Mining、训练导出、高级 Pause/Resume/Fork 和 RL 后置。详细未完成关卡见[部署记录](validation/2026-10-26-deployment-audit.md)。
 
 本批页面及查询验收见 [页面记录](validation/2026-10-06-s1-web.md)、[Registry 页面记录](validation/2026-10-26-registry-ui.md)；多 Trial 交付边界见 [多 Trial 验收记录](validation/2026-10-26-multitrial.md)。后续按 [逐步实施计划](next-implementation.md) 推进。
 
