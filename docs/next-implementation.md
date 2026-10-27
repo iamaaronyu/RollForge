@@ -10,7 +10,7 @@
 | 3 | 受控产物与轨迹 Viewer | 所有权、对象作用域、摘要与大小检查，失败定位 | 基础索引/文本、主轨迹时间线及浏览器内文本搜索、ATIF 多模态与内嵌子轨迹、受控外部 JSON 子轨迹按需读取、Hub 验证后的媒体预览/文件下载及 Job 评分统计已实现；外部子轨迹每次按需读取并限制 1 MiB，不自动遍历引用；详见 [外部子轨迹验收](validation/2026-10-27-external-subtrajectory.md) |
 | 4 | 不可变 Revision Registry 与批量展开 | 版本冻结、幂等展开、Retry 不增加样本数 | API、SDK、资产发现分页及中文 Registry 页已实现；真实 PostgreSQL 所有权/摘要/拒绝与分页测试通过。2026-10-27 Registry 绑定的真实双 Trial Job 已 2/2 完成（并发 1）；待扩展到多进程 Worker、更多样本与故障恢复，见[部署审计](validation/2026-10-26-deployment-audit.md) |
 | 5 | 持续 Worker 与容量调度 | 真双 Worker、背压、重启恢复、有界回收 | 有界常驻 Worker、FIFO 入队、退避、优雅停机与鉴权租约回收已实现；18 项真实 PostgreSQL 执行/API 测试通过；双 Worker Harbor/E2B、进程重启和全局容量验收待完成，见 [验收记录](validation/2026-10-26-scheduler.md) |
-| 6 | 部署与故障演练 | SIGKILL/掉电、限流、备份读回、监控与升级恢复 | Linux Hub/Web、PostgreSQL、Silo 对象存储已部署；独立端口、权限、Hub readiness、S3 角色隔离及数据容器重启读回已有现场证据。GitHub `d209366`（含 `b9476b2` 的 Viewer 功能）已部署到 systemd：Hub/Web active，readiness/首页 200，Scheduler inactive，写入/执行门全关。升级前隔离目录完整检查 191 passed、54 skipped，Runtime 检查 9 passed；详见[升级验收记录](validation/2026-10-27-linux-upgrade.md)。加密备份卷、PG 客户端与备份恢复、常驻模型网关、真实 Sandbox 取消与宿主故障/监控验收仍待完成 |
+| 6 | 部署与故障演练 | SIGKILL/掉电、限流、备份读回、监控与升级恢复 | Linux Hub/Web、PostgreSQL、Silo 对象存储已部署；独立端口、权限、Hub readiness、S3 角色隔离及数据容器重启读回已有现场证据。GitHub `d209366`（含 `b9476b2` 的 Viewer 功能）已部署到 systemd：Hub/Web active，readiness/首页 200，Scheduler inactive，写入/执行门全关。Mac 上的受限模型网关 LaunchAgent 已运行且会话为空；E2B 持久 `/32` 配置与单端口防火墙单元已实现并推送，但尚未在节点启用，需确认此设置作用于该节点所有 Sandbox 且仅用于独占 RollForge 节点。加密备份卷、PG 客户端与备份恢复、真实 Sandbox 取消与宿主故障/监控验收仍待完成 |
 | 并行前置 | 网关与权限加固 | TLS/部署认证、token 级费用预算、用户登录、Worker/对象权限 | 请求次数已由 SQLite 持久化原子扣减；其余正式开放前完成 |
 
 每一切片先共享契约与权限，再实现 API/生成类型/页面；相关不变量用真实 PostgreSQL/MinIO 验证。修改执行链时补真实 Harbor/E2B/模型证据。提交前 make check；Runtime 改动追加 runtime-check。按文件独立提交，不混入其他 Agent 的改动。

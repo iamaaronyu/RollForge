@@ -102,4 +102,8 @@ Hub/Web readiness 与首页均为 HTTP 200；Scheduler inactive/disabled。Hub �
 
 随后在 Mac 的 Tailnet 地址启动临时模型网关做独立路径核对：配置存于本机权限 0600 的临时目录，session 列表为空；Sandbox 发送无效测试 Token 的非模型请求，实际收到 HTTP 403，网关只记录状态码。该结果证明 E2B→Linux Tailscale→独立 Mac 网关的受限链路可达，且未调用 DeepSeek 上游。测试结束后停止 Mac 网关、删除本机临时私密配置，并清除 Linux 临时网络配置。
 
+随后已在可信 Mac 创建 `com.rollforge.model-gateway` LaunchAgent。真实上游 Key 只保存在 Mac `~/.rollforge/private/gateway.json`（0600，父目录 0700）；日志目录 0700、日志文件 0600；Agent 当前 running，sessions 为空，匿名请求仍返回 403。没有将 Key 或有效会话 Token 传到 Linux，也未触发上游请求。
+
+新增 `scripts/e2b_gateway_firewall.py` 与 `infra/systemd/rollforge-e2b-gateway-firewall.service`，限制 E2B veth 到指定 Tailnet IPv4 TCP 11441，并按注释幂等删除。新增工具已推送并 fast-forward 到 Linux `/opt/rollforge` checkout（`8fa6a33`）；`systemd-analyze verify` 对该单元通过，只有既有其他单元警告。持久 E2B Compose allowlist 与防火墙服务尚未启用，因为 allowlist 作用于该节点所有 Sandbox；需先确认该节点是 RollForge 独占节点。当前 Compose override 仍恢复原始摘要，临时规则为 0、CIDR 环境变量不存在、Firecracker 为 0。正式执行开关保持关闭。
+
 所有本次临时 Compose override 与防火墙规则均已清理，原 `compose.override.yaml` SHA256 未变；E2B API/Orchestrator 均 healthy，CIDR 允许项不存在，带标记临时规则为 0，探针服务 inactive，Firecracker 为 0。该临时网关只证明独占测试节点的受限路径；尚未部署常驻网关、TLS/部署认证或 token 级费用预算，也未验证持久规则在重启后的安全恢复。不得把全节点 CIDR 放行作为生产配置。正式执行入口继续关闭。
