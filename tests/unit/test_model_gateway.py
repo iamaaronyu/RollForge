@@ -54,6 +54,18 @@ def test_expired_session_rejected(config):
     assert not config.with_suffix(".sqlite3").exists()
 
 
+def test_gateway_initializes_persistent_budget_ledger_before_first_request(config):
+    sessions = Sessions(config)
+
+    sessions.initialize()
+
+    state_db = config.with_suffix(".sqlite3")
+    assert state_db.is_file()
+    assert state_db.stat().st_mode & 0o777 == 0o600
+    with sqlite3.connect(state_db) as connection:
+        assert connection.execute("SELECT count(*) FROM session_usage").fetchone() == (0,)
+
+
 def test_request_budget_is_atomic_under_concurrency(config):
     with ThreadPoolExecutor(max_workers=10) as pool:
         results = list(

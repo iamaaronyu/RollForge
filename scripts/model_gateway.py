@@ -40,6 +40,23 @@ class Sessions:
             )
         self.state_db.chmod(0o600)
 
+    def initialize(self):
+        info = self.config.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
+            raise ValueError("网关配置必须为仅 owner 可读写的普通文件")
+        try:
+            data = json.loads(self.config.read_text())
+        except (OSError, json.JSONDecodeError):
+            raise ValueError("网关配置无效") from None
+        if (
+            not isinstance(data, dict)
+            or not isinstance(data.get("upstream_key"), str)
+            or not data["upstream_key"]
+            or not isinstance(data.get("sessions", {}), dict)
+        ):
+            raise ValueError("网关配置结构无效")
+        self._initialize_budget_store()
+
     def authorize(self, token: str, model: str) -> str | None:
         # 会话按 token 摘要索引；额度在 SQLite 事务中原子扣减并跨进程/重启持久化。
         # 重新读取配置使删除或修改会话立即撤销；仅返回上游 Key 给宿主 HTTP 层。
@@ -154,7 +171,9 @@ def main():
     parser.add_argument("--port", type=int, default=11441)
     args = parser.parse_args()
     os.umask(0o077)
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(Sessions(args.config)))
+    sessions = Sessions(args.config)
+    sessions.initialize()
+    server = ThreadingHTTPServer((args.host, args.port), make_handler(sessions))
     server.daemon_threads = True
     server.serve_forever()
 
