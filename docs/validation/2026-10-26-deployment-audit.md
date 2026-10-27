@@ -65,3 +65,29 @@
 备份准备仍未就绪：`/mnt/rollforge-backups` 不是独立挂载点，当前位于根 ext4 文件系统；宿主没有 `pg_dump`、`pg_restore`、`psql`。尝试刷新 APT 索引时 Ubuntu 镜像返回 HTTP 403，索引更新失败且未安装软件。数据库运行在 PostgreSQL 16 容器内。后续需先修复受信任的 Ubuntu 包镜像并安装匹配的 PostgreSQL 16 客户端，或实现并验证容器化客户端流程；还需配置独立加密备份介质及恢复目标。不能以根盘上的普通目录代替加密备份卷。
 
 本地网关复核中，工作区沙箱阻止访问本机 Tailscale 偏好与进程列表；DeepSeek Key 文件存在且权限为 0600，但未读取或输出其值。当前没有证据证明网关常驻可达或 Runtime 会话仍有效。服务器端没有网关部署/预算数据库证据。网关连通、会话有效/过期/撤销、预算账本重启与恢复均未验收，因此不能登记批准执行配置或开启 Worker/Scheduler。
+
+## 2026-10-27 真实双 Trial 闭环与收尾
+
+### 环境修复与验收
+
+服务器 Runtime venv 最初只有 Python 解释器，缺少固定 Harbor/E2B 依赖。使用锁定文件运行 `uv sync --project integration/harbor-runtime --python 3.12 --locked` 后，远端 `make runtime-check` 为 **9 passed**。首个 Worker 尝试又确认公开 `hello-task` 未声明独立 Verifier；Worker 按安全契约拒绝该任务，两个 Trial 以失败/过期终止，未调用模型。样例现已在 `[verifier]` 明确设置 `environment_mode = "separate"`，修复提交 `142464e` 已推送。
+
+新归档使用 Worker 对象存储身份上传并读回校验；Worker 解包摘要匹配，固定 Harbor 解析出的 Verifier 模式为 `separate`。该版本绑定为 Task Revision 2。临时模型网关仅允许 `deepseek-flash`、单次最多 8192 输出 token；本次签发的 1 小时会话最多 12 个请求。
+
+随后通过 Registry 绑定创建的真实双 Trial Job 完成 **2/2**：两个 Trial 均为 `COMPLETED`、奖励均为 **1.0**，生成 **2 个不同 Execution 和 2 个不同 Manifest**，验收器确认 Registry 选择与 Job 快照一致。真实链路覆盖 Hub、PostgreSQL、Silo、Scheduler、Worker、Harbor 0.24.0、E2B 2.46.0 和 DeepSeek 网关。Worker/Scheduler 并发为 1。
+
+### 收尾状态
+
+验收后 E2B Sandbox 数与 Firecracker 进程数均为 0。短时模型会话先被网关撤销，旧 Token 请求得到 403，随后从服务器 Runtime 文件删除；本机网关与负向端口探测器均已停止。E2B 的单地址临时 allowlist 和 `veth+` TCP 11441 防火墙规则已全部移除，Orchestrator 恢复原 Compose 配置并保持 healthy。
+
+Hub/Web readiness 与首页均为 HTTP 200；Scheduler inactive/disabled。Hub 控制面写入、Worker 执行、Scheduler 和 Web 实验开关均为 false。数据库保留成功与失败验收记录；Registry 有 Task/Agent/Model 三类资产和四个版本。成功结果可由 Hub 查询，未把原始轨迹、响应或凭证提交到仓库。
+
+本地 `make check`：**185 passed、52 skipped、1 warning**；本地与服务器 Runtime 检查均为 **9 passed**。GitHub `main` 已包含样例修复提交 `142464e`。
+
+### 正式开放前仍需完成
+
+1. **持久化网关和 E2B 网络规则**：本次 Mac 网关、E2B `/32` allowlist 与端口防火墙只用于受控验收，随后已恢复/停止；服务器 Runtime 当前没有模型会话 Token。需建立可恢复的常驻网关、持久但只允许网关单地址 TCP 11441 的 Sandbox 规则，并再验收重启、过期和撤销。当前网关为受限 LAN HTTP 实验配置，生产 HTTPS/部署认证尚未完成。
+2. **加密备份和隔离恢复**：`/mnt/rollforge-backups` 仍不是独立加密挂载卷，宿主缺少 PostgreSQL 16 备份客户端；本次 APT 更新受 Ubuntu 镜像 HTTP 403 阻塞，未安装软件。需准备至少 20 GiB、建议 60 GiB 的独立加密备份卷，修复可信包源或验证容器化 PostgreSQL 客户端路径，然后按 [跨组件备份与恢复手册](../backup-recovery.md) 完成真实备份读回和隔离恢复。
+3. **恢复与容量关卡**：整机重启、Worker/Scheduler 强制中断后的恢复，以及 8 GiB 主机上的资源/费用上限仍待单独验收。
+
+因此，本轮证明了真实平台双 Trial 功能闭环，但不批准打开常驻执行入口；上述运行与灾备关卡通过前，所有执行门保持关闭。
