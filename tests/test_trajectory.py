@@ -64,7 +64,7 @@ def test_projection_missing_zero_and_media():
         },
     ]
     result = project_trajectory(json.dumps(data), available_media_paths=media_paths)
-    assert result.projection_version == 2
+    assert result.projection_version == 3
     assert result.steps[0].media[0].artifact_path == "input.png"
     assert result.steps[0].media[1].artifact_path is None
     assert result.steps[0].media[1].duration_sec == 1.5
@@ -106,10 +106,11 @@ def test_projection_rejects_invalid_media_source_without_echoing_path():
     assert "secret-key" not in str(error.value)
 
 
-def test_projection_expands_embedded_subagents_and_redacts_external_references():
+def test_projection_expands_embedded_subagents_and_manifest_scopes_external_references():
     data = document()
     data["steps"][1]["observation"]["results"][0]["subagent_trajectory_ref"] = [
-        {"trajectory_id": "sub-1"},
+        {"trajectory_id": "sub-1", "trajectory_path": "external/embedded.json"},
+        {"trajectory_path": "external/worker.json"},
         {"trajectory_path": "https://private.invalid/trace.json?token=secret"},
     ]
     data["subagent_trajectories"] = [
@@ -121,15 +122,38 @@ def test_projection_expands_embedded_subagents_and_redacts_external_references()
         }
     ]
 
-    result = project_trajectory(json.dumps(data))
+    result = project_trajectory(
+        json.dumps(data),
+        available_media_paths={"external/embedded.json", "external/worker.json"},
+    )
 
     observation = result.steps[1].observations[0]
     assert observation.subagent_trajectory_ids == ("sub-1",)
+    assert observation.external_subtrajectory_paths == ("external/worker.json",)
     assert observation.unresolved_subagent_count == 1
     assert result.subagents[0].agent_name == "helper"
     assert result.subagents[0].steps[0].message == "child output"
     assert "private.invalid" not in result.model_dump_json()
     assert "token=secret" not in result.model_dump_json()
+    assert "external/worker.json" in result.model_dump_json()
+
+
+def test_projection_does_not_expose_external_paths_outside_manifest():
+    data = document()
+    data["steps"][1]["observation"]["results"][0]["subagent_trajectory_ref"] = [
+        {"trajectory_path": "../private.json"},
+        {"trajectory_path": "https://objects.invalid/secret.json?token=hidden"},
+        {"trajectory_path": "files/readme.txt"},
+    ]
+    result = project_trajectory(
+        json.dumps(data), available_media_paths={"public/allowed.json", "files/readme.txt"}
+    )
+    observation = result.steps[1].observations[0]
+    assert observation.external_subtrajectory_paths == ()
+    assert observation.unresolved_subagent_count == 3
+    assert "private.json" not in result.model_dump_json()
+    assert "objects.invalid" not in result.model_dump_json()
+    assert "token=hidden" not in result.model_dump_json()
 
 
 @pytest.mark.parametrize(

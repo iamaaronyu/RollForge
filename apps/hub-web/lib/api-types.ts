@@ -209,6 +209,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/jobs/{job_id}/executions/{execution_id}/trajectory/external": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** External Trajectory View */
+        readonly get: operations["external_trajectory_view"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/jobs/{job_id}/trials": {
         readonly parameters: {
             readonly query?: never;
@@ -1053,6 +1070,11 @@ export interface components {
             /** Call Id */
             readonly call_id?: string | null;
             /**
+             * External Subtrajectory Paths
+             * @default []
+             */
+            readonly external_subtrajectory_paths: readonly string[];
+            /**
              * Subagent Trajectory Ids
              * @default []
              */
@@ -1069,10 +1091,10 @@ export interface components {
         readonly TrajectoryView: {
             /**
              * Projection Version
-             * @default 2
+             * @default 3
              * @constant
              */
-            readonly projection_version: 2;
+            readonly projection_version: 3;
             /** Source Version */
             readonly source_version: string;
             /** Steps */
@@ -2100,6 +2122,85 @@ export interface operations {
     readonly trajectory_view: {
         readonly parameters: {
             readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly job_id: string;
+                readonly execution_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TrajectoryView"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    readonly external_trajectory_view: {
+        readonly parameters: {
+            readonly query: {
+                readonly path: string;
+            };
             readonly header?: never;
             readonly path: {
                 readonly job_id: string;

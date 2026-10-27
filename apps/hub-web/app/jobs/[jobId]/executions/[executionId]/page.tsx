@@ -24,10 +24,10 @@ function mediaReferences(trajectory: TrajectoryView): TrajectoryView["steps"][nu
 
 export default async function Artifacts({ params, searchParams }: {
   params: Promise<{ jobId: string; executionId: string }>;
-  searchParams: Promise<{ file?: string; media?: string }>;
+  searchParams: Promise<{ file?: string; media?: string; subtrajectory?: string }>;
 }) {
   const { jobId, executionId } = await params;
-  const { file, media } = await searchParams;
+  const { file, media, subtrajectory } = await searchParams;
   if (!validId(jobId) || !validId(executionId)) notFound();
   const base = `/api/v1/jobs/${jobId}/executions/${executionId}`;
   const page = `/jobs/${jobId}/executions/${executionId}`;
@@ -42,10 +42,24 @@ export default async function Artifacts({ params, searchParams }: {
     try { trajectory = await hub<TrajectoryView>(base + "/trajectory"); }
     catch (error) { trajectoryProblem = error instanceof HubProblem && [413, 422].includes(error.status) ? "轨迹超出投影范围或格式不受支持，可查看原始文件。" : message(error); }
   }
+  let externalTrajectory: TrajectoryView | undefined; let externalProblem = "";
+  if (subtrajectory) {
+    const item = index.files.find(candidate => candidate.path === subtrajectory);
+    if (!item || item.path === "agent/trajectory.json" || !item.path.toLowerCase().endsWith(".json")) notFound();
+    if (item.size > 1024 * 1024) externalProblem = "外部轨迹超过 1 MiB 读取上限。";
+    else {
+      try { externalTrajectory = await hub<TrajectoryView>(`${base}/trajectory/external?path=${encodeURIComponent(subtrajectory)}`); }
+      catch (error) { externalProblem = error instanceof HubProblem && error.status === 422 ? "外部文件不是受支持的轨迹。" : message(error); }
+    }
+  }
   let mediaPreview: { dataUrl: string; mediaType: string } | undefined;
   let mediaProblem = "";
   if (media) {
-    if (!trajectory || !mediaReferences(trajectory).some(item => item.artifact_path === media)) notFound();
+    const refs = [
+      ...(trajectory ? mediaReferences(trajectory) : []),
+      ...(externalTrajectory ? mediaReferences(externalTrajectory) : []),
+    ];
+    if (!refs.some(item => item.artifact_path === media)) notFound();
     try { mediaPreview = await hubMedia(`${base}/artifact-media?path=${encodeURIComponent(media)}`); }
     catch (error) { mediaProblem = error instanceof HubProblem && error.status === 413 ? "该媒体超过 8 MiB 预览限制。" : error instanceof HubProblem && error.status === 415 ? "该文件类型不支持媒体预览。" : message(error); }
   }
@@ -62,13 +76,14 @@ export default async function Artifacts({ params, searchParams }: {
   return <main><header><Link href={`/jobs/${jobId}`}>← 执行历史</Link><span>执行产物</span></header>
     <h1>结果与原始记录</h1><p className="identifier">{executionId}</p><p className="score">{resultText(index.result)}</p>
     <section className="panel"><h2>执行时间线</h2>
-      <p className="note">主轨迹保留原始顺序，搜索覆盖主轨迹最多 1000 步的消息、推理、工具调用、返回和媒体元数据。已内嵌子轨迹可展开；外部子轨迹不自动取址。用量不累加，复制上下文单独标记，缺失字段显示未知。图片和音频显示受 Manifest 确认的附件路径与类型，可预览不超过 8 MiB 的附件。</p>
+      <p className="note">主轨迹保留原始顺序，搜索覆盖当前轨迹最多 1000 步的消息、推理、工具调用、返回和媒体元数据。内嵌子轨迹可展开；外部子轨迹仅在路径与已接受 Manifest 完全匹配时按需读取，每份不超过 1 MiB。用量不累加，复制上下文单独标记，缺失字段显示未知。图片和音频显示 Manifest 确认的附件路径与类型，可预览不超过 8 MiB 的附件。</p>
       {trajectoryProblem && <p role="alert">{trajectoryProblem}</p>}
       {!trajectory && !trajectoryProblem && <p>尚无可展示的主轨迹。</p>}
       {trajectory && <><p>来源 {trajectory.source_version} · 投影版本 {trajectory.projection_version}</p>
-        <TrajectoryViewer trajectory={trajectory} />
+        <TrajectoryViewer trajectory={trajectory} jobId={jobId} executionId={executionId} />
       </>}
     </section>
+    {subtrajectory && <section className="panel"><h2>外部子轨迹</h2><p className="identifier">{subtrajectory}</p>{externalProblem && <p role="alert">{externalProblem}</p>}{externalTrajectory && <><p>来源 {externalTrajectory.source_version}</p><TrajectoryViewer trajectory={externalTrajectory} jobId={jobId} executionId={executionId} subtrajectoryPath={subtrajectory} /></>}</section>}
     {media && <section className="panel"><h2 className="identifier">{media}</h2>{mediaProblem ? <p role="alert">{mediaProblem}</p> : mediaPreview?.mediaType.startsWith("image/") ? <img src={mediaPreview.dataUrl} alt={`执行附件 ${media}`} style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain" }} /> : mediaPreview && <audio controls preload="none" src={mediaPreview.dataUrl}>浏览器不支持音频播放。</audio>}<p className="note">媒体由 Hub 按执行所有权、Manifest 清单、内容摘要和 8 MiB 上限验证后提供；网页不会获得对象存储凭证。</p></section>}
     <section className="panel"><h2>文件索引</h2><div className="table-wrap"><table><thead><tr><th>文件</th><th>字节</th><th>预览</th></tr></thead><tbody>
       {index.files.map(item => <tr key={item.path}><td className="identifier">{item.path}</td><td>{item.size}</td><td>{item.size <= 1024 * 1024 && <Link href={`${page}?file=${encodeURIComponent(item.path)}`}>文本预览</Link>}{item.size <= 64 * 1024 * 1024 ? <>{item.size <= 1024 * 1024 ? " · " : ""}<a href={`/api/jobs/${jobId}/executions/${executionId}/artifact?path=${encodeURIComponent(item.path)}`}>下载</a></> : item.size > 1024 * 1024 ? "超过预览和下载上限" : null}</td></tr>)}

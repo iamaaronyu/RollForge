@@ -225,6 +225,106 @@ async def test_trajectory_authorization_and_integrity(engine, server, store, out
         assert (await raw.get(endpoint, headers=headers)).status_code == 503
 
 
+async def test_external_subtrajectory_is_manifest_scoped_and_bounded(engine, server, store, output):
+    external_path = "agent/subagents/worker.json"
+    (output / "agent/subagents").mkdir(parents=True)
+    (output / external_path).write_text(
+        json.dumps(
+            {
+                "schema_version": "ATIF-v1.8",
+                "steps": [{"step_id": 1, "source": "agent", "message": "synthetic child"}],
+            }
+        )
+    )
+    (output / "agent/oversized.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "ATIF-v1.8",
+                "steps": [{"step_id": 1, "source": "agent", "message": "x" * (1024 * 1024)}],
+            }
+        )
+    )
+    (output / "agent/notes.txt").write_text("synthetic non-json")
+    (output / "agent/trajectory.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "ATIF-v1.8",
+                "steps": [
+                    {
+                        "step_id": 1,
+                        "source": "agent",
+                        "message": "delegated",
+                        "observation": {
+                            "results": [
+                                {
+                                    "subagent_trajectory_ref": [
+                                        {
+                                            "trajectory_path": external_path,
+                                            "session_id": "private-session",
+                                        },
+                                        {"trajectory_path": "https://private.invalid/secret.json"},
+                                    ]
+                                }
+                            ]
+                        },
+                    }
+                ],
+            }
+        )
+    )
+    async with clients(engine) as (app, sdk, raw, _ids, tokens):
+        storage_settings(app, server, store)
+        scope, _ = await publish(engine, server, store, output, sdk)
+        base = f"/api/v1/jobs/{scope.job_id}/executions/{scope.execution_id}"
+        headers = {"Authorization": "Bearer " + tokens["user"]}
+        main = await raw.get(base + "/trajectory", headers=headers)
+        assert main.status_code == 200
+        observation = main.json()["steps"][0]["observations"][0]
+        assert observation["external_subtrajectory_paths"] == [external_path]
+        assert observation["unresolved_subagent_count"] == 1
+        assert "private-session" not in main.text and "private.invalid" not in main.text
+
+        child = await raw.get(
+            base + "/trajectory/external", headers=headers, params={"path": external_path}
+        )
+        assert child.status_code == 200
+        assert child.json()["steps"][0]["message"] == "synthetic child"
+        assert (
+            await raw.get(
+                base + "/trajectory/external",
+                headers={"Authorization": "Bearer " + tokens["other_user"]},
+                params={"path": external_path},
+            )
+        ).status_code == 404
+        assert (
+            await raw.get(
+                base + "/trajectory/external",
+                headers={"Authorization": "Bearer " + tokens["worker"]},
+                params={"path": external_path},
+            )
+        ).status_code == 403
+        for path, status in [
+            ("../secret.json", 404),
+            ("agent/missing.json", 404),
+            ("agent/notes.txt", 415),
+            ("agent/oversized.json", 413),
+        ]:
+            response = await raw.get(
+                base + "/trajectory/external", headers=headers, params={"path": path}
+            )
+            assert response.status_code == status
+        store.client.put_object(
+            Bucket=store.bucket,
+            Key=scope.prefix + "/files/" + external_path,
+            Body=b"tampered external trace",
+        )
+        assert (
+            await raw.get(
+                base + "/trajectory/external", headers=headers, params={"path": external_path}
+            )
+        ).status_code == 503
+
+
 async def test_unsupported_trajectory_keeps_raw_preview(engine, server, store, output):
     async with clients(engine) as (app, sdk, raw, _ids, tokens):
         storage_settings(app, server, store)

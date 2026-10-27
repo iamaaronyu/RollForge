@@ -26,6 +26,7 @@ class ToolObservation(Contract):
     call_id: str | None = None
     text: str | None = None
     subagent_trajectory_ids: tuple[str, ...] = ()
+    external_subtrajectory_paths: tuple[str, ...] = ()
     unresolved_subagent_count: int = Field(default=0, ge=0, strict=True)
 
 
@@ -58,7 +59,7 @@ class SubtrajectoryView(Contract):
 
 
 class TrajectoryView(Contract):
-    projection_version: Literal[2] = 2
+    projection_version: Literal[3] = 3
     source_version: str
     steps: tuple[TimelineStep, ...]
     subagents: tuple[SubtrajectoryView, ...] = ()

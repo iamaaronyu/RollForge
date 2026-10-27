@@ -1,7 +1,11 @@
 from types import SimpleNamespace
 
 import pytest
-from rollforge_api.artifacts import read_artifact_download, read_artifact_media
+from rollforge_api.artifacts import (
+    read_artifact_download,
+    read_artifact_media,
+    read_external_trajectory,
+)
 from rollforge_api.routes import ApiFailure
 from rollforge_schemas.api import ErrorCode
 
@@ -124,3 +128,62 @@ def test_artifact_download_rejects_files_larger_than_object_limit(monkeypatch):
     assert error.value.status == 413
     assert store.reads == []
     assert store.closed
+
+
+def test_external_trajectory_reads_only_manifest_listed_json(monkeypatch):
+    import json
+
+    payload = json.dumps(
+        {
+            "schema_version": "ATIF-v1.8",
+            "steps": [{"step_id": 1, "source": "agent", "message": "synthetic"}],
+        }
+    ).encode()
+    record = SimpleNamespace(
+        path="subagents/worker.json", digest="sha256:expected", size=len(payload)
+    )
+    store = install_fake_store(monkeypatch, [record])
+    store.payload = payload
+
+    view = read_external_trajectory(
+        fake_settings(),
+        SimpleNamespace(prefix="jobs/job/execution"),
+        SimpleNamespace(manifest_digest="sha256:manifest"),
+        record.path,
+    )
+
+    assert view.steps[0].message == "synthetic"
+    assert store.reads == [
+        ("jobs/job/execution/files/subagents/worker.json", "sha256:expected", len(payload))
+    ]
+    assert store.closed
+
+
+@pytest.mark.parametrize(
+    ("path", "files", "status", "opened_store"),
+    [
+        ("missing.json", [], 404, True),
+        ("agent/trajectory.json", [], 404, False),
+        ("notes.txt", [SimpleNamespace(path="notes.txt", digest="sha256:x", size=1)], 415, False),
+        (
+            "huge.json",
+            [SimpleNamespace(path="huge.json", digest="sha256:x", size=1024 * 1024 + 1)],
+            413,
+            True,
+        ),
+    ],
+)
+def test_external_trajectory_rejects_unlisted_non_json_or_large_files(
+    monkeypatch, path, files, status, opened_store
+):
+    store = install_fake_store(monkeypatch, files)
+    with pytest.raises(ApiFailure) as error:
+        read_external_trajectory(
+            fake_settings(),
+            SimpleNamespace(prefix="scope"),
+            SimpleNamespace(manifest_digest="sha256:manifest"),
+            path,
+        )
+    assert error.value.status == status
+    assert store.reads == []
+    assert store.closed is opened_store

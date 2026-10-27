@@ -97,7 +97,7 @@ Registry API 与版本发现/绑定页面已完成，真实多 Trial 验收脚�
 
 本批页面及查询验收见 [页面记录](validation/2026-10-06-s1-web.md)、[Registry 页面记录](validation/2026-10-26-registry-ui.md)；多 Trial 交付边界见 [多 Trial 验收记录](validation/2026-10-26-multitrial.md)。后续按 [逐步实施计划](next-implementation.md) 推进。
 
-第二批已实现受控产物索引及 1 MiB 文本预览，真实 PostgreSQL/MinIO 权限、越界、篡改与预览边界通过；详见 [基础 Viewer 验收](validation/2026-10-06-viewer.md)。第三批主轨迹版本化投影与中文时间线已实现；详见 [时间线验收](validation/2026-10-06-trajectory.md)。ATIF v1.8 图片/音频元数据、有界内嵌子轨迹投影和 Hub 验证后的 8 MiB 媒体预览已实现；媒体只绑定接受 Manifest 中的路径。新增受控 64 MiB 文件下载及同源 Web 代理，并补充权限、路径和篡改集成断言。Job 评分统计已实现，包含零分、缺失指标覆盖和当前执行权语义，真实 PostgreSQL 验收见 [Job 统计记录](validation/2026-10-27-job-aggregation.md)。外部子轨迹读取仍待开发；附件与下载边界见[多模态附件验收](validation/2026-10-26-multimodal-viewer.md)与[下载验收](validation/2026-10-26-artifact-download.md)。
+第二批已实现受控产物索引及 1 MiB 文本预览，真实 PostgreSQL/MinIO 权限、越界、篡改与预览边界通过；详见 [基础 Viewer 验收](validation/2026-10-06-viewer.md)。第三批主轨迹版本化投影与中文时间线已实现；详见 [时间线验收](validation/2026-10-06-trajectory.md)。ATIF v1.8 图片/音频元数据、有界内嵌子轨迹投影和 Hub 验证后的 8 MiB 媒体预览已实现；媒体只绑定接受 Manifest 中的路径。新增受控 64 MiB 文件下载及同源 Web 代理，并补充权限、路径和篡改集成断言。Job 评分统计已实现，包含零分、缺失指标覆盖和当前执行权语义，真实 PostgreSQL 验收见 [Job 统计记录](validation/2026-10-27-job-aggregation.md)。外部子轨迹已增加按需只读：只接收已接受 Manifest 的 JSON 相对路径，Hub 校验摘要并限制单文件 1 MiB，不回传 URL/主机路径；相关 API、适配器和界面说明见[外部子轨迹验收](validation/2026-10-27-external-subtrajectory.md)。真实 S3 集成断言仍待提供固定 MinIO 测试环境运行；附件与下载边界见[多模态附件验收](validation/2026-10-26-multimodal-viewer.md)与[下载验收](validation/2026-10-26-artifact-download.md)。
 
 
 2026-10-07 第四批：三类不可变资产版本注册表、迁移、USER API 与 SDK 已实现；注册表尚未接入执行快照或批量展开，不改变单 Trial 主链。数据库竞争、冻结、权限及带数据迁移回退通过，详见 [Registry 说明](registry.md) 和 [验收记录](validation/2026-10-07-registry.md)。下一切片为多 Trial Job 契约、迁移与确定性展开。

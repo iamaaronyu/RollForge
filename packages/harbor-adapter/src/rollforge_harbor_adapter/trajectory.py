@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+from pathlib import PurePosixPath
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -137,6 +138,14 @@ def media_content(
     return tuple(references)
 
 
+def manifest_json_path(path: str | None, available_paths: set[str]) -> bool:
+    return (
+        path is not None
+        and path in available_paths
+        and PurePosixPath(path).suffix.lower() == ".json"
+    )
+
+
 class Call(Input):
     tool_call_id: str
     function_name: str
@@ -150,9 +159,9 @@ class Observation(Input):
 
 
 class SubagentTrajectoryRef(Input):
-    trajectory_id: str | None = None
-    session_id: str | None = None
-    trajectory_path: str | None = None
+    trajectory_id: str | None = Field(default=None, max_length=256)
+    session_id: str | None = Field(default=None, max_length=256)
+    trajectory_path: str | None = Field(default=None, max_length=768)
 
     @model_validator(mode="after")
     def require_resolvable_reference(self):
@@ -228,8 +237,18 @@ def project_steps(document: Document, media_paths: set[str], budget: dict, child
                     call_id=item.source_call_id,
                     text=text_content(item.content),
                     subagent_trajectory_ids=referenced_ids,
+                    external_subtrajectory_paths=tuple(
+                        dict.fromkeys(
+                            reference.trajectory_path
+                            for reference in refs
+                            if manifest_json_path(reference.trajectory_path, media_paths)
+                            and reference.trajectory_id not in child_ids
+                        )
+                    ),
                     unresolved_subagent_count=sum(
-                        reference.trajectory_id not in child_ids for reference in refs
+                        reference.trajectory_id not in child_ids
+                        and not manifest_json_path(reference.trajectory_path, media_paths)
+                        for reference in refs
                     ),
                 )
             )

@@ -133,6 +133,52 @@ def read_artifact_download(settings, scope, result, path: str) -> tuple[bytes, s
         objects.close()
 
 
+def read_external_trajectory(settings, scope, result, path: str) -> TrajectoryView:
+    """Read one Manifest-listed ATIF JSON file; never resolve a URL or host path."""
+    if path == "agent/trajectory.json":
+        raise ApiFailure(404, ErrorCode.NOT_FOUND, "外部子轨迹不存在")
+    if PurePosixPath(path).suffix.lower() != ".json":
+        raise ApiFailure(415, ErrorCode.INVALID_REQUEST, "外部子轨迹必须是 JSON 文件")
+    try:
+        objects = S3ObjectStore(
+            settings.object_storage_endpoint,
+            settings.object_storage_bucket,
+            settings.object_storage_access_key,
+            settings.object_storage_secret_key,
+            allow_local_http=settings.object_storage_allow_local_http,
+        )
+    except ValueError:
+        raise ObjectStoreError("对象存储配置无效") from None
+    try:
+        manifest = BundlePublisher(objects, sensitive_values=()).inspect(
+            scope, result.manifest_digest
+        )
+        file = next((item for item in manifest.files if item.path == path), None)
+        if file is None:
+            raise ApiFailure(404, ErrorCode.NOT_FOUND, "外部子轨迹不存在")
+        if file.size > 1024 * 1024:
+            raise ApiFailure(413, ErrorCode.INVALID_REQUEST, "外部轨迹最多支持 1 MiB")
+        data = objects.read_verified(scope.prefix + "/files/" + file.path, file.digest, file.size)
+        try:
+            value = data.decode("utf-8")
+        except UnicodeDecodeError:
+            raise ApiFailure(422, ErrorCode.INVALID_REQUEST, "外部轨迹不是 UTF-8 JSON") from None
+        if "\x00" in value:
+            raise ApiFailure(422, ErrorCode.INVALID_REQUEST, "外部轨迹格式不受支持")
+        return project_trajectory(
+            value,
+            available_media_paths={
+                item.path
+                for item in manifest.files
+                if item.path not in {file.path, "agent/trajectory.json"}
+            },
+        )
+    except UnsupportedTrajectory:
+        raise
+    finally:
+        objects.close()
+
+
 @router.get(
     "/jobs/{job_id}/executions/{execution_id}/artifacts",
     response_model=ArtifactIndex,
@@ -267,8 +313,38 @@ async def trajectory_view(
         read_artifacts, request.app.state.settings, *accepted, "agent/trajectory.json"
     )
     try:
-        return project_trajectory(value, available_media_paths={item.path for item in index.files})
+        return project_trajectory(
+            value,
+            available_media_paths={
+                item.path for item in index.files if item.path != "agent/trajectory.json"
+            },
+        )
     except UnsupportedTrajectory:
         raise ApiFailure(
             422, ErrorCode.INVALID_REQUEST, "轨迹格式不受支持，请查看原始文件"
         ) from None
+
+
+@router.get(
+    "/jobs/{job_id}/executions/{execution_id}/trajectory/external",
+    response_model=TrajectoryView,
+    tags=["artifacts"],
+    operation_id="external_trajectory_view",
+)
+async def external_trajectory_view(
+    job_id: UUID,
+    execution_id: UUID,
+    identity: User,
+    store: Store,
+    request: Request,
+    path: Annotated[str, Query(min_length=1, max_length=768)],
+):
+    accepted = await store.accepted_execution(job_id, execution_id, identity.subject_id)
+    if accepted is None:
+        raise ApiFailure(404, ErrorCode.NOT_FOUND, "执行产物不存在")
+    try:
+        return await asyncio.to_thread(
+            read_external_trajectory, request.app.state.settings, *accepted, path
+        )
+    except UnsupportedTrajectory:
+        raise ApiFailure(422, ErrorCode.INVALID_REQUEST, "外部轨迹格式不受支持") from None
