@@ -9,6 +9,7 @@ purpose = "rollforge-s0"
 timeout_sec = 300
 
 [verifier]
+environment_mode = "separate"
 timeout_sec = 60
 
 [environment]
