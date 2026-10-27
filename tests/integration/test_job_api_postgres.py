@@ -520,3 +520,31 @@ async def test_cancel_and_finish_race_has_one_terminal_winner(engine):
         assert isinstance(rejected, HubError) and rejected.status_code == 409
         final = await sdk["user"].get_job(job.job_id)
         assert final.trial.status in {TrialStatus.CANCELLED, TrialStatus.COMPLETED}
+
+
+async def test_cancel_completed_job_conflicts_but_partial_job_cancels_remaining_trials(engine):
+    async with clients(engine) as (_, sdk, _, _, _):
+        job = await sdk["user"].create_job(job_request().model_copy(update={"trial_count": 3}))
+        lease = await sdk["worker"].claim()
+        completed = await sdk["worker"].finish(commit(job, lease))
+        assert completed.status == TrialStatus.COMPLETED
+
+        cancelled = await sdk["user"].cancel_job(job.job_id)
+        trials = await sdk["user"].list_trials(job.job_id, limit=10)
+        assert [trial.status for trial in trials.items] == [
+            TrialStatus.COMPLETED,
+            TrialStatus.CANCELLED,
+            TrialStatus.CANCELLED,
+        ]
+        assert await sdk["user"].cancel_job(job.job_id) == cancelled
+
+        with pytest.raises(HubError) as error:
+            await sdk["user"].cancel_trial(job.job_id, completed.trial_id)
+        assert error.value.status_code == 409
+
+        only_completed = await sdk["user"].create_job(job_request())
+        only_lease = await sdk["worker"].claim()
+        await sdk["worker"].finish(commit(only_completed, only_lease))
+        with pytest.raises(HubError) as error:
+            await sdk["user"].cancel_job(only_completed.job_id)
+        assert error.value.status_code == 409

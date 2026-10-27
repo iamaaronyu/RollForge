@@ -230,6 +230,8 @@ class ExecutionService:
             )
             if trial is None:
                 return None
+            if trial.status in {TrialStatus.COMPLETED, TrialStatus.FAILED}:
+                raise SubmissionConflict("Trial is already terminal")
             await self._cancel_trial(session, trial)
             return (await self.trial_views(session, [trial]))[0]
 
@@ -249,8 +251,20 @@ class ExecutionService:
                     .with_for_update()
                 )
             )
+            changed_or_cancelled = False
             for trial in trials:
+                if trial.status == TrialStatus.CANCELLED:
+                    changed_or_cancelled = True
+                    continue
+                if trial.status in {
+                    TrialStatus.PENDING,
+                    TrialStatus.QUEUED,
+                    TrialStatus.RUNNING,
+                }:
+                    changed_or_cancelled = True
                 await self._cancel_trial(session, trial)
+            if not changed_or_cancelled:
+                raise SubmissionConflict("Job has no cancellable Trials")
             return await self.view(session, job)
 
     async def list_jobs(self, owner_id: UUID, limit: int = 20, after: UUID | None = None):

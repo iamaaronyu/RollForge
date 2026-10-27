@@ -20,7 +20,7 @@
 | `POST /api/v1/worker/leases/finish` | WORKER 提交结果元数据；同一结果可幂等重放 |
 | `POST /api/v1/worker/leases/recover` | WORKER 有界回收已过期租约；预算耗尽的 Trial 失败，否则重新排队 |
 
-业务接口已实现，控制面写接口默认关闭。ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED 默认为 false；关闭时创建、取消、领取、续租、完成返回 503 / WRITES_DISABLED。GET 查询仍需认证。用户取消会在 PostgreSQL 事务中将未开始 Trial 置为 CANCELLED；运行中的 Trial 同事务撤销 Execution 租约并标记 CANCELLED，Worker 在下次续租（最多约 30 秒）发现租约撤销后通过现有 SIGTERM 路径清理 Runtime。取消与完成由同一 Trial 锁串行化，重复取消幂等。该 API 不等同于即时强制杀进程，真实 E2B 取消时延与清理仍需运行验收。Worker 执行与恢复实现见 [Worker 说明](worker.md)，受限 LAN、并发 1 的合成样例真实全链已通过。网关请求次数已持久化，但 TLS、部署身份认证、用户登录与 token 级费用预算仍未完成；platform 的 execution_enabled 保持 false，control_plane_writes_enabled 单独报告元数据写开关，不表示完成 S0 或开放真实执行。
+业务接口已实现，控制面写接口默认关闭。ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED 默认为 false；关闭时创建、取消、领取、续租、完成返回 503 / WRITES_DISABLED。GET 查询仍需认证。用户取消会在 PostgreSQL 事务中将未开始 Trial 置为 CANCELLED；运行中的 Trial 同事务撤销 Execution 租约并标记 CANCELLED，Worker 在下次续租（最多约 30 秒）发现租约撤销后通过现有 SIGTERM 路径清理 Runtime。取消与完成由同一 Trial 锁串行化。对已取消 Job/Trial 的重复请求幂等；全部 Trial 已成功/失败的 Job 或已成功/失败的 Trial 不能再取消，返回 409。Job 有部分已结束样本时，仍会取消其余未结束样本。该 API 不等同于即时强制杀进程，真实 E2B 取消时延与清理仍需运行验收。Worker 执行与恢复实现见 [Worker 说明](worker.md)，受限 LAN、并发 1 的合成样例真实全链已通过。网关请求次数已持久化，但 TLS、部署身份认证、用户登录与 token 级费用预算仍未完成；platform 的 execution_enabled 保持 false，control_plane_writes_enabled 单独报告元数据写开关，不表示完成 S0 或开放真实执行。
 
 ## 认证与权限
 

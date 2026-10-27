@@ -15,6 +15,10 @@
 - 真实数据库测试经 SSH 隧道运行较慢；完整全库 `make check` 未在此环境等完。仅上述聚焦 PostgreSQL 测试计为通过。
 - 临时 PostgreSQL 容器和 SSH 隧道均已关闭；现有 E2B 数据库和运行服务未修改。
 
+## 2026-10-27 远端 PostgreSQL 竞争回归
+
+在目标节点的隔离 PostgreSQL schema 中重跑完整集成测试时，发现“取消与完成并发只能有一个操作成功”测试失败：完成先取得 Trial 锁并提交后，Job 取消把已完成 Trial 当作无操作仍返回成功。修复后，已全终态且没有任何已取消样本的 Job 取消返回 409；已取消 Job 仍幂等，部分完成的多 Trial Job 仍会取消其余活动样本。单 Trial 取消已完成/失败样本也返回 409。完整远端 PostgreSQL 回归待本修复提交并部署后复跑。
+
 ## 尚待验收
 
 需要真实 Worker/Sandbox 执行期间调用取消 API，确认续租撤销后 Firecracker 数量回到 0；还需覆盖 Worker 掉电、SIGKILL 和 Sandbox 清理失败。取消后的 Trial 当前为终态，不提供恢复或从原 Trial 重试。
