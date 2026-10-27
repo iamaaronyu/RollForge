@@ -293,7 +293,6 @@ def write_postgres_dump(destination: Path, env: dict[str, str]):
         "--format=custom",
         "--no-owner",
         "--no-privileges",
-        "--file=-",
     ]
     process = None
     try:
@@ -821,14 +820,16 @@ def restore_database(bundle: Path, database_url: str, expected_fingerprint: dict
         container_client = bool(postgres_client_container())
         dump_stream = (bundle / "database.dump").open("rb") if container_client else None
         try:
+            restore_command = [
+                *postgres_command("pg_restore", env),
+                "--exit-on-error",
+                "--no-owner",
+                "--no-privileges",
+            ]
+            if not container_client:
+                restore_command.append(str(bundle / "database.dump"))
             restore = subprocess.Popen(
-                [
-                    *postgres_command("pg_restore", env),
-                    "--exit-on-error",
-                    "--no-owner",
-                    "--no-privileges",
-                    "-" if container_client else str(bundle / "database.dump"),
-                ],
+                restore_command,
                 stdin=dump_stream,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,

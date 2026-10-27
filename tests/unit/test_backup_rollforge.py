@@ -237,9 +237,11 @@ def test_containerized_postgres_dump_streams_to_private_host_file(tmp_path, monk
         lambda name, _env: ["docker", "exec", "-i", "rollforge-postgres-1", name],
     )
 
+    commands = []
+
     class FakeProcess:
         def __init__(self, command, *, stdout, **_kwargs):
-            self.command = command
+            commands.append(command)
             stdout.write(b"custom-format-dump")
 
         @staticmethod
@@ -258,6 +260,7 @@ def test_containerized_postgres_dump_streams_to_private_host_file(tmp_path, monk
 
     assert destination.read_bytes() == b"custom-format-dump"
     assert destination.stat().st_mode & 0o777 == 0o600
+    assert "--file=-" not in commands[0]
 
 
 def test_backup_uses_dedicated_read_only_object_storage_identity(tmp_path, monkeypatch):
