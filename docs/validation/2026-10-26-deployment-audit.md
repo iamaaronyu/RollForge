@@ -55,3 +55,13 @@
 远端 PostgreSQL 完整集成测试在随机隔离 schema 中运行，测试结束自动删除 schema：修复前 36 passed、15 skipped、1 failed，失败定位到“完成先提交后，取消已完成 Job 仍返回成功”的终态语义问题。修复 `a613c05` 部署后重跑为 **38 passed、15 skipped、0 failed**。15 项跳过包括需要固定 MinIO 测试二进制的 Silo 对象存储用例及缺少历史 Harbor 轨迹样本的用例。测试不修改既有业务表；运行库的 Job、Trial、Execution、Registry Asset/Revision 仍均为 0，迁移版本为 `0005_cancelled_executions`。
 
 状态复核仍未满足真实多 Trial 前置条件：目标机没有 Registry revision、获批 Task archive 或部署审批绑定；上一次临时模型网关会话/网络规则已恢复原状，常驻网关路径和当前会话有效性未验收。`/mnt/rollforge-backups` 仍非加密挂载卷，宿主 PG 备份客户端未安装，因此没有可用的加密备份/隔离恢复证据。正式执行门保持关闭；不得把本轮控制面部署和数据库竞争测试计作真实 Worker→Harbor/E2B→模型多 Trial 验收。
+
+## 2026-10-27 后续部署准备复核
+
+通过 `tyu@100.106.244.122` 只读复核：Hub/Web active，Scheduler inactive/disabled，四个写入/执行开关仍为 false。Runtime 私密文件仅含 E2B 凭证、模型会话 Token 和 E2B endpoint 变量名，权限为 `rollforge:rollforge 0600`；未读取或输出任何值。PostgreSQL 中 Job、Registry Asset、Registry Revision 与 Execution 均为 0。
+
+公开 `hello-task` 六文件归档已使用 Worker 对象存储身份上传至 Silo 并读回校验，归档摘要为 `sha256:01481611aa8ba77d86961a78783ac46b769a35ea1094988cbf123a7b19d56345`。它尚未登记为 Registry Revision，也没有部署审批绑定；没有创建 Job 或改变执行开关。
+
+备份准备仍未就绪：`/mnt/rollforge-backups` 不是独立挂载点，当前位于根 ext4 文件系统；宿主没有 `pg_dump`、`pg_restore`、`psql`。尝试刷新 APT 索引时 Ubuntu 镜像返回 HTTP 403，索引更新失败且未安装软件。数据库运行在 PostgreSQL 16 容器内。后续需先修复受信任的 Ubuntu 包镜像并安装匹配的 PostgreSQL 16 客户端，或实现并验证容器化客户端流程；还需配置独立加密备份介质及恢复目标。不能以根盘上的普通目录代替加密备份卷。
+
+本地网关复核中，工作区沙箱阻止访问本机 Tailscale 偏好与进程列表；DeepSeek Key 文件存在且权限为 0600，但未读取或输出其值。当前没有证据证明网关常驻可达或 Runtime 会话仍有效。服务器端没有网关部署/预算数据库证据。网关连通、会话有效/过期/撤销、预算账本重启与恢复均未验收，因此不能登记批准执行配置或开启 Worker/Scheduler。
