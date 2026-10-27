@@ -1,28 +1,69 @@
 """专用 PostgreSQL 验收；每个测试创建独立 schema，仅清理自己创建的资源。"""
 
 import asyncio
+import hashlib
+import json
 import os
+import secrets
+import socket
 import stat
 import subprocess
 import sys
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import uvicorn
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from pydantic import SecretStr
 from rollforge_api.db import Base
 from rollforge_api.execution_service import ExecutionService, LeaseRejected, SubmissionConflict
+from rollforge_api.main import create_app
 from rollforge_api.models import Execution, Trial
+from rollforge_common.settings import Settings
+from rollforge_hub_sdk.client import HubClient, HubError
+from rollforge_schemas.api import FinishRequest, LeaseReference
 from rollforge_schemas.domain import RevisionRef, TrialStatus
 from rollforge_schemas.execution import CreateJob, ExecutionSnapshot, LeaseIdentity, ResultCommit
 from rollforge_schemas.runnable import RunnableBinding
 from sqlalchemy import func, select, text, update
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+@asynccontextmanager
+async def serve_app(app):
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(128)
+    listener.setblocking(False)
+    host, port = listener.getsockname()
+    server = uvicorn.Server(
+        uvicorn.Config(app, host=host, port=port, log_level="critical", access_log=False)
+    )
+    task = asyncio.create_task(server.serve(sockets=[listener]))
+    try:
+        for _ in range(500):
+            if server.started:
+                break
+            if task.done():
+                await task
+            await asyncio.sleep(0.01)
+        if not server.started:
+            raise TimeoutError("Hub HTTP test server did not start")
+        yield f"http://{host}:{port}"
+    finally:
+        server.should_exit = True
+        try:
+            await asyncio.wait_for(task, timeout=10)
+        finally:
+            listener.close()
 
 
 def migration(connection, action):
@@ -249,17 +290,7 @@ async def test_recovery_budget_and_service_restart(engine):
 
 
 async def test_sigkill_worker_once_recovers_and_enforces_retry_budget(engine, tmp_path):
-    """A dead OS process loses its lease; recovery fences it and bounds retries."""
-    async with engine.connect() as connection:
-        schema = await connection.scalar(text("SELECT current_schema()"))
-    process_env = {
-        "ROLLFORGE_TEST_DATABASE_URL": os.environ["ROLLFORGE_TEST_DATABASE_URL"],
-        "ROLLFORGE_TEST_SCHEMA": schema,
-        "ROLLFORGE_TEST_SPOOL": str(tmp_path / "worker-spool"),
-        "PYTHONPATH": os.pathsep.join(filter(None, [str(ROOT), os.environ.get("PYTHONPATH", "")])),
-    }
-    if os.environ.get("PATH"):
-        process_env["PATH"] = os.environ["PATH"]
+    """A killed real Worker process is fenced through the authenticated Hub API."""
     service = ExecutionService(engine)
     job = request(max_executions=2)
     binding = RunnableBinding(
@@ -277,51 +308,96 @@ async def test_sigkill_worker_once_recovers_and_enforces_retry_budget(engine, tm
     job = job.model_copy(update={"snapshot": snapshot, "trial_count": 1})
     await service.create_job(job)
 
-    async def claim_then_kill():
-        process_env["ROLLFORGE_TEST_WORKER_ID"] = str(uuid4())
-        process = subprocess.Popen(
-            [sys.executable, str(ROOT / "tests/integration/process_claim_fixture.py")],
-            cwd=ROOT,
-            env=process_env,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
-        try:
-            line = await asyncio.wait_for(asyncio.to_thread(process.stdout.readline), timeout=10)
-            assert line, "claim subprocess exited before publishing its test lease"
-            lease = LeaseIdentity.model_validate_json(line)
-            process.kill()
-            await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=10)
-            return lease
-        finally:
-            if process.poll() is None:
-                process.kill()
-                await asyncio.to_thread(process.wait)
-            if process.stdout:
-                process.stdout.close()
+    worker_id = uuid4()
+    token = secrets.token_urlsafe(32)
+    settings = Settings(
+        _env_file=None,
+        control_plane_writes_enabled=True,
+        api_credentials=SecretStr(
+            json.dumps(
+                [
+                    {
+                        "subject_id": str(worker_id),
+                        "role": "WORKER",
+                        "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
+                    }
+                ]
+            )
+        ),
+    )
+    app = create_app(settings, engine=engine)
 
-    first = await claim_then_kill()
-    assert first.fencing_token == 1
-    spool_lease = tmp_path / "worker-spool" / str(first.execution_id) / "lease.json"
-    assert spool_lease.is_file()
-    assert stat.S_IMODE(spool_lease.stat().st_mode) == 0o600
-    await asyncio.sleep(1.2)
-    assert await service.recover_expired() == 1
+    async with serve_app(app) as hub_url:
+        async with HubClient(hub_url, SecretStr(token)) as hub:
 
-    second = await claim_then_kill()
-    assert second.trial_id == first.trial_id
-    assert second.execution_id != first.execution_id
-    assert second.fencing_token == first.fencing_token + 1
-    with pytest.raises(LeaseRejected):
-        await service.finish(first, result(job, first))
+            async def claim_then_kill():
+                process_env = {
+                    "ROLLFORGE_TEST_HUB_URL": hub_url,
+                    "ROLLFORGE_TEST_WORKER_TOKEN": token,
+                    "ROLLFORGE_TEST_SPOOL": str(tmp_path / "worker-spool"),
+                    "PYTHONPATH": os.pathsep.join(
+                        filter(None, [str(ROOT), os.environ.get("PYTHONPATH", "")])
+                    ),
+                }
+                if os.environ.get("PATH"):
+                    process_env["PATH"] = os.environ["PATH"]
+                process = subprocess.Popen(
+                    [sys.executable, str(ROOT / "tests/integration/process_claim_fixture.py")],
+                    cwd=ROOT,
+                    env=process_env,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                )
+                try:
+                    line = await asyncio.wait_for(
+                        asyncio.to_thread(process.stdout.readline), timeout=10
+                    )
+                    assert line, "Worker exited before entering the test execution block"
+                    lease = LeaseIdentity.model_validate_json(line)
+                    process.kill()
+                    await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=10)
+                    return lease
+                finally:
+                    if process.poll() is None:
+                        process.kill()
+                        await asyncio.to_thread(process.wait)
+                    if process.stdout:
+                        process.stdout.close()
 
-    await asyncio.sleep(1.2)
-    assert await service.recover_expired() == 1
-    with pytest.raises(LeaseRejected):
-        await service.finish(second, result(job, second))
-    assert await service.claim(uuid4()) is None
+            async def reject_stale_finish(lease):
+                body = FinishRequest(
+                    lease=LeaseReference(
+                        trial_id=lease.trial_id,
+                        execution_id=lease.execution_id,
+                        fencing_token=lease.fencing_token,
+                    ),
+                    result=result(job, lease),
+                )
+                with pytest.raises(HubError) as rejected:
+                    await hub.finish(body)
+                assert rejected.value.status_code == 409
+
+            first = await claim_then_kill()
+            assert first.fencing_token == 1
+            spool_lease = tmp_path / "worker-spool" / str(first.execution_id) / "lease.json"
+            assert spool_lease.is_file()
+            assert stat.S_IMODE(spool_lease.stat().st_mode) == 0o600
+            await expire(engine, first)
+            assert (await hub.recover_expired()).recovered_count == 1
+
+            second = await claim_then_kill()
+            assert second.trial_id == first.trial_id
+            assert second.execution_id != first.execution_id
+            assert second.fencing_token == first.fencing_token + 1
+            await reject_stale_finish(first)
+
+            await expire(engine, second)
+            assert (await hub.recover_expired()).recovered_count == 1
+            await reject_stale_finish(second)
+            assert await hub.claim() is None
+
     current = await service.get_job(job.job_id, job.owner_id)
     assert current.trial.status == TrialStatus.FAILED
 

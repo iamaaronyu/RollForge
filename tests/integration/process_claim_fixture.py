@@ -4,22 +4,10 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from uuid import UUID
 
-from rollforge_api.execution_service import ExecutionService
+from pydantic import SecretStr
+from rollforge_hub_sdk.client import HubClient
 from rollforge_worker.executor import Worker, WorkerSettings
-from sqlalchemy.ext.asyncio import create_async_engine
-
-
-class DatabaseHub:
-    def __init__(self, service, worker_id):
-        self.service = service
-        self.worker_id = worker_id
-
-    async def claim(self, request):
-        return await self.service.claim(
-            self.worker_id, lease_seconds=1, runnable_only=request.runnable_only
-        )
 
 
 class BlockingWorker(Worker):
@@ -39,24 +27,20 @@ class BlockingWorker(Worker):
 
 
 async def main():
-    url = os.environ["ROLLFORGE_TEST_DATABASE_URL"]
-    schema = os.environ["ROLLFORGE_TEST_SCHEMA"]
-    worker_id = UUID(os.environ["ROLLFORGE_TEST_WORKER_ID"])
-    engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
-    try:
-        service = ExecutionService(engine)
+    settings = WorkerSettings(
+        worker_runs_enabled=True,
+        worker_hub_url=os.environ["ROLLFORGE_TEST_HUB_URL"],
+        worker_hub_token=SecretStr(os.environ["ROLLFORGE_TEST_WORKER_TOKEN"]),
+        worker_spool=Path(os.environ["ROLLFORGE_TEST_SPOOL"]),
+        worker_gateway_url="https://gateway.invalid",
+    )
+    async with HubClient(settings.worker_hub_url, settings.worker_hub_token) as hub:
         worker = BlockingWorker(
-            WorkerSettings(
-                worker_runs_enabled=True,
-                worker_spool=Path(os.environ["ROLLFORGE_TEST_SPOOL"]),
-                worker_gateway_url="https://gateway.invalid",
-            ),
-            DatabaseHub(service, worker_id),
+            settings,
+            hub,
             None,
         )
         await worker.once()
-    finally:
-        await engine.dispose()
 
 
 if __name__ == "__main__":
