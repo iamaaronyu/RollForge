@@ -18,6 +18,12 @@
 
 底层采用 [官方 S3 PutObject 的 IfNoneMatch 条件](https://docs.aws.amazon.com/boto3/latest/reference/services/s3/client/put_object.html)：仅写入不存在的对象。已有对象须完整读回、内容相同才允许重放；409 并发冲突返回安全的可重试错误，不降级为无条件覆盖。SHA256 来自实际内容，不信任 HEAD 或调用方写入的摘要元数据。
 
+## 真实 S3 兼容服务验收
+
+`tests/integration/test_object_store_minio.py` 默认使用固定版本 MinIO 二进制启动独立实例。也可设置 `ROLLFORGE_TEST_OBJECT_STORE_ENV_FILE` 指向当前测试用户拥有、权限不向 group/other 开放的私密 env 文件，其中包含 `MINIO_ROOT_USER`、`MINIO_ROOT_PASSWORD`，以及可选的 `ROLLFORGE_MINIO_HOST_PORT`。外部 endpoint 必须为 loopback；测试为每项用例创建 `rollforge-test-<随机值>` bucket，并只清理该随机 bucket。外部服务由部署管理，测试不会重启它，因此重启持久性用例会跳过。
+
+此模式会用配置文件中的管理员凭证创建与删除随机 bucket，只能针对经授权的本机 S3 测试/验收服务运行。正常退出时 fixture 会清理对象和 bucket；若测试进程被强制终止，需人工核对并清理该次生成的随机测试 bucket。不要指向远程 endpoint，也不要将配置文件、凭证或运行结果提交。
+
 ## 恢复语义
 
 上传期间进程中断或写入响应丢失：保留本地原始输出，用相同 scope 重放 publish。已有对象只在内容完全相同时复用；任何冲突都拒绝覆盖。Manifest 尚未发布的部分对象不算完成。

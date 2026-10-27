@@ -1,5 +1,6 @@
-"""独立真实 MinIO；需要显式提供固定版本二进制，不能用 Mock 代替。"""
+"""独立 MinIO 或隔离随机 bucket 的 S3-compatible 服务真实集成测试。"""
 
+import ipaddress
 import json
 import os
 import secrets
@@ -7,11 +8,13 @@ import selectors
 import shutil
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
@@ -35,6 +38,7 @@ class MinioServer:
             sock.bind(("127.0.0.1", 0))
             self.port = sock.getsockname()[1]
         self.endpoint = f"http://127.0.0.1:{self.port}"
+        self.can_restart = True
 
     def start(self):
         descriptor = os.open(
@@ -82,36 +86,121 @@ class MinioServer:
         return S3ObjectStore(self.endpoint, bucket, self.access, self.secret, allow_local_http=True)
 
 
+class ExternalS3Server:
+    """已运行的 loopback S3 服务；测试只创建并清理随机 bucket。"""
+
+    can_restart = False
+
+    def __init__(self, env_file):
+        config_path = Path(env_file)
+        metadata = config_path.lstat()
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_mode & 0o077
+            or metadata.st_uid != os.geteuid()
+        ):
+            raise RuntimeError("外部 S3 测试配置必须是当前用户拥有的私密普通文件")
+        values = dotenv_values(config_path)
+        try:
+            access = values["MINIO_ROOT_USER"]
+            secret = values["MINIO_ROOT_PASSWORD"]
+            port = int(values.get("ROLLFORGE_MINIO_HOST_PORT") or "59000")
+        except (KeyError, TypeError, ValueError):
+            raise RuntimeError("外部 S3 测试配置缺少必要字段") from None
+        if not access or not secret or not 1 <= port <= 65535:
+            raise RuntimeError("外部 S3 测试配置值无效")
+        self.endpoint = values.get("ROLLFORGE_TEST_S3_ENDPOINT") or f"http://127.0.0.1:{port}"
+        parsed = urlsplit(self.endpoint)
+        try:
+            endpoint_port = parsed.port
+            loopback = (
+                parsed.hostname == "localhost"
+                or ipaddress.ip_address(parsed.hostname or "").is_loopback
+            )
+        except ValueError:
+            endpoint_port = None
+            loopback = False
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not loopback
+            or not endpoint_port
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise RuntimeError("外部 S3 测试 endpoint 必须显式指向本机 loopback")
+        self.access = SecretStr(access)
+        self.secret = SecretStr(secret)
+
+    def store(self, bucket):
+        return S3ObjectStore(self.endpoint, bucket, self.access, self.secret, allow_local_http=True)
+
+
+def test_external_s3_config_requires_private_file(tmp_path):
+    env_file = tmp_path / "infra.env"
+    env_file.write_text("MINIO_ROOT_USER=test-user\nMINIO_ROOT_PASSWORD=test-secret\n")
+    env_file.chmod(0o644)
+
+    with pytest.raises(RuntimeError, match="私密普通文件"):
+        ExternalS3Server(env_file)
+
+
+def test_external_s3_config_rejects_non_loopback_endpoint(tmp_path):
+    env_file = tmp_path / "infra.env"
+    env_file.write_text(
+        "MINIO_ROOT_USER=test-user\n"
+        "MINIO_ROOT_PASSWORD=test-secret\n"
+        "ROLLFORGE_TEST_S3_ENDPOINT=https://objects.example:443\n"
+    )
+    env_file.chmod(0o600)
+
+    with pytest.raises(RuntimeError, match="loopback"):
+        ExternalS3Server(env_file)
+
+
 @pytest.fixture(scope="module")
 def server(tmp_path_factory):
     binary = os.getenv("ROLLFORGE_TEST_MINIO_BINARY")
-    if not binary:
-        pytest.skip("需要固定版本真实 MinIO 二进制 ROLLFORGE_TEST_MINIO_BINARY")
-    binary = str(Path(binary).resolve(strict=True))
-    instance = MinioServer(binary, tmp_path_factory.mktemp("rollforge-minio"))
-    try:
-        instance.start()
-        yield instance
-    finally:
-        instance.stop()
+    if binary:
+        binary = str(Path(binary).resolve(strict=True))
+        instance = MinioServer(binary, tmp_path_factory.mktemp("rollforge-minio"))
+        try:
+            instance.start()
+            yield instance
+        finally:
+            instance.stop()
+        return
+    env_file = os.getenv("ROLLFORGE_TEST_OBJECT_STORE_ENV_FILE")
+    if not env_file:
+        pytest.skip(
+            "需要固定版本 ROLLFORGE_TEST_MINIO_BINARY 或私密 ROLLFORGE_TEST_OBJECT_STORE_ENV_FILE"
+        )
+    yield ExternalS3Server(env_file)
 
 
 @pytest.fixture
 def store(server):
     bucket = "rollforge-test-" + uuid4().hex
     client = server.store(bucket)
-    client.client.create_bucket(Bucket=bucket)
+    created = False
     try:
+        client.client.create_bucket(Bucket=bucket)
+        created = True
         yield client
     finally:
-        # 只删除本测试随机新建的 bucket，绝不清理已有 bucket。
-        paginator = client.client.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=bucket):
-            objects = [{"Key": item["Key"]} for item in page.get("Contents", [])]
-            if objects:
-                client.client.delete_objects(Bucket=bucket, Delete={"Objects": objects})
-        client.client.delete_bucket(Bucket=bucket)
-        client.close()
+        try:
+            if created:
+                # 只删除本测试随机新建的 bucket，绝不清理已有 bucket。
+                paginator = client.client.get_paginator("list_objects_v2")
+                for page in paginator.paginate(Bucket=bucket):
+                    objects = [{"Key": item["Key"]} for item in page.get("Contents", [])]
+                    if objects:
+                        client.client.delete_objects(Bucket=bucket, Delete={"Objects": objects})
+                client.client.delete_bucket(Bucket=bucket)
+        finally:
+            client.close()
 
 
 @pytest.fixture
@@ -265,6 +354,8 @@ BundlePublisher(CheckpointStore(), sensitive_values=()).publish(scope, Path(conf
 
 
 def test_real_minio_restart_preserves_verified_result(server, store, scope, output):
+    if not server.can_restart:
+        pytest.skip("外部 S3 服务由部署管理；测试不会重启共享服务")
     result = BundlePublisher(store, sensitive_values=()).publish(scope, output)
     server.stop()
     server.start()
