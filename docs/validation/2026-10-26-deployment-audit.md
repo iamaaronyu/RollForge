@@ -100,4 +100,6 @@ Hub/Web readiness 与首页均为 HTTP 200；Scheduler inactive/disabled。Hub �
 
 为复核 E2B 到服务器单地址网关的路径，先后执行了无凭证 HTTP 探针。默认 E2B 私网策略会阻断目标；只重建带临时目标 `/32` allowlist 的 orchestrator 后，Sandbox 创建返回 placement 错误。根据历史验收确认安全刷新流程后，在无活动 Sandbox/Firecracker 时重启 E2B API；固定 SDK 的无互联网 Sandbox 创建/销毁 smoke 随即通过。再按固定版本 E2B 文档临时加入目标 `/32` allowlist，并用专属 veth raw/nat 规则仅放行 TCP 11441，Sandbox 成功访问服务器单地址上的常量 HTTP 探针；未发送模型请求或凭证。该结果验证了本次恢复顺序和受限单端口网络路径，但不能单独证明 placement 错误的内部根因。
 
+随后在 Mac 的 Tailnet 地址启动临时模型网关做独立路径核对：配置存于本机权限 0600 的临时目录，session 列表为空；Sandbox 发送无效测试 Token 的非模型请求，实际收到 HTTP 403，网关只记录状态码。该结果证明 E2B→Linux Tailscale→独立 Mac 网关的受限链路可达，且未调用 DeepSeek 上游。测试结束后停止 Mac 网关、删除本机临时私密配置，并清除 Linux 临时网络配置。
+
 所有本次临时 Compose override 与防火墙规则均已清理，原 `compose.override.yaml` SHA256 未变；E2B API/Orchestrator 均 healthy，CIDR 允许项不存在，带标记临时规则为 0，探针服务 inactive，Firecracker 为 0。该临时网关只证明独占测试节点的受限路径；尚未部署常驻网关、TLS/部署认证或 token 级费用预算，也未验证持久规则在重启后的安全恢复。不得把全节点 CIDR 放行作为生产配置。正式执行入口继续关闭。
