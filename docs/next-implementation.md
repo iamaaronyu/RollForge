@@ -4,13 +4,13 @@
 
 | 顺序 | 本批交付 | 验收要求 | 当前状态 |
 |---|---|---|---|
-| 0 | Linux 临时网络恢复收尾 | 原配置恢复、临时规则为 0、E2B 健康、无 VM | 已复核；本轮再次尝试的 Sandbox placement 未成功，临时 override/规则已清理，恢复后 SDK 创建/销毁 smoke 通过；见部署审计 |
+| 0 | Linux 临时网络恢复收尾 | 原配置恢复、临时规则为 0、E2B 健康、无 VM | 2026-10-27 再次运行只读预检及固定 Compose 恢复/SDK 创建销毁 smoke，通过；Firecracker 为 0，持久模型网关防火墙和 `/32` allowlist 未启用；见[E2B 恢复记录](validation/2026-10-27-e2b-recovery-smoke.md)与部署审计 |
 | 1 | 用户范围 Job 列表与 Execution 历史 | 游标分页、越权拒绝、Retry 历史、无 Worker 身份泄露 | 已实现并通过本轮验收 |
 | 2 | 中文单任务创建与查询页 | 服务端审核目录、token 不进浏览器、真实数据库页面往返 | 已实现并通过本轮验收 |
 | 3 | 受控产物与轨迹 Viewer | 所有权、对象作用域、摘要与大小检查，失败定位 | 基础索引/文本、主轨迹时间线及浏览器内文本搜索、ATIF 多模态与内嵌子轨迹、受控外部 JSON 子轨迹按需读取、Hub 验证后的媒体预览/文件下载及 Job 评分统计已实现；外部子轨迹每次按需读取并限制 1 MiB，不自动遍历引用；详见 [外部子轨迹验收](validation/2026-10-27-external-subtrajectory.md) |
 | 4 | 不可变 Revision Registry 与批量展开 | 版本冻结、幂等展开、Retry 不增加样本数 | API、SDK、资产发现分页及中文 Registry 页已实现；真实 PostgreSQL 所有权/摘要/拒绝与分页测试通过；100 个逻辑 Trial 的确定性展开、分页和全局租约领取已通过真实 PostgreSQL 验收；Registry 绑定的真实 Harbor/E2B 主链仍只覆盖 2 个 Trial（并发 1），需继续扩大真实运行样本，见[全局容量验收](validation/2026-10-27-global-execution-capacity.md)与[部署审计](validation/2026-10-26-deployment-audit.md) |
 | 5 | 持续 Worker 与容量调度 | 真双 Worker、背压、重启恢复、有界回收 | 有界常驻 Worker、FIFO 入队、退避、优雅停机与鉴权租约回收已实现；PostgreSQL 全局领取容量已通过同进程、独立 OS 进程和两个独立 Hub HTTP 服务竞争测试，Linux 真实 PostgreSQL + Silo 完整集成 60 passed、2 skipped，随机测试 bucket 与 schema 均已清理；常驻双 Worker Harbor/E2B、进程重启和中断恢复仍待完成，见[Worker PostgreSQL 回归](validation/2026-10-27-worker-postgres-regression.md)、[Silo 集成验收](validation/2026-10-27-silo-integration.md)、[全局容量验收](validation/2026-10-27-global-execution-capacity.md)与[调度验收记录](validation/2026-10-26-scheduler.md) |
-| 6 | 部署与故障演练 | SIGKILL/掉电、限流、备份读回、监控与升级恢复 | Linux Hub/Web、PostgreSQL、Silo 对象存储已部署；独立端口、权限、Hub readiness、S3 角色隔离及数据容器重启读回已有现场证据。Hub/Web active，Scheduler inactive，写入/执行门全关。Mac 受限网关 LaunchAgent 已运行、会话为空，启动即创建的 SQLite 预算账本现已在 0600 权限下实机验证。PostgreSQL 容器内客户端的只读指纹、`pg_dump` stdout 和 `pg_restore` stdin 路径已实机验证；备份创建现会拒绝未挂载或无法验证 dm-crypt 的路径；Linux 节点的未挂载拒绝已实测，见[预检记录](validation/2026-10-27-backup-encryption-preflight.md)。加密备份卷、独立只读 S3 账号及真实创建/恢复仍未就绪。E2B 持久 `/32` 配置与单端口防火墙单元已实现并推送，但尚未在节点启用，需确认此设置作用于该节点所有 Sandbox 且仅用于独占 RollForge 节点。手动 E2B 无模型 SDK 恢复 smoke 已通过，见[记录](validation/2026-10-27-e2b-recovery-smoke.md)；真实双 Worker/取消、整机重启恢复及监控验收仍待完成 |
+| 6 | 部署与故障演练 | SIGKILL/掉电、限流、备份读回、监控与升级恢复 | Linux Hub/Web、PostgreSQL、Silo 对象存储已部署；独立端口、权限、Hub readiness、S3 角色隔离及数据容器重启读回已有现场证据。Hub/Web active，Scheduler inactive，写入/执行门全关。受保护配置预检仅发现 Runtime 缺少 `ROLLFORGE_MODEL_SESSION_TOKEN`；已验证服务器到 Mac 网关的无会话请求返回 403，未调用模型。E2B 恢复/SDK smoke 2026-10-27 再次通过，Firecracker 为 0；持久 allowlist 仍关闭，待确认该规则影响范围仅为 RollForge 独占节点。Mac 受限网关启动即创建的 SQLite 预算账本在 0600 权限下实机验证。备份创建会拒绝未挂载或无法验证 dm-crypt 的路径；Linux 节点未挂载拒绝已实测，见[预检记录](validation/2026-10-27-backup-encryption-preflight.md)。加密备份卷、独立只读 S3 账号及真实创建/恢复仍未就绪。真实双 Worker/取消、整机重启恢复及监控验收仍待完成 |
 | 并行前置 | 网关与权限加固 | TLS/部署认证、真实供应商费用对账、用户登录、Worker/对象权限 | 会话限时/限次/费用上限、单会话及全部撤销命令已实现；Mac 真实配置签发/撤销后即时 403 验收通过；一次真实 DeepSeek 响应按 usage 结算 21 微美元、预留归零。Sandbox 内会话生命周期、供应商账单对账、TLS 和部署身份认证仍待验收 |
 
 每一切片先共享契约与权限，再实现 API/生成类型/页面；相关不变量用真实 PostgreSQL/MinIO 验证。修改执行链时补真实 Harbor/E2B/模型证据。提交前 make check；Runtime 改动追加 runtime-check。按文件独立提交，不混入其他 Agent 的改动。
