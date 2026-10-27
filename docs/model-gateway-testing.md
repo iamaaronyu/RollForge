@@ -22,3 +22,11 @@
 8. 撤销会话并验证 403。恢复不含网关 override 的 orchestrator，删除本次专属防火墙规则与临时 override；停止测试监听器，删除私密网关配置和会话环境文件。保留受保护的本地证据，不提交原始输出。
 
 主机重启还需要单独验收。以上流程不会使临时防火墙或测试网关自动持久化，也不会开启 Hub 执行入口。
+
+## 独占测试节点的持久网络服务
+
+生产/常驻 Worker 只能在专属 RollForge E2B 节点使用此配置；E2B 的 `/32` allowlist 对节点上所有 Sandbox 生效，不能用于共享或多租户节点。真实上游 Key 留在可信 Mac 的 `~/.rollforge/private/gateway.json`（目录 0700、文件 0600），不要复制到 Linux/E2B 主机。Mac 的 `com.rollforge.model-gateway` LaunchAgent 将网关绑定到 Mac Tailnet IPv4 `100.102.201.53:11441`；会话应默认为空，只在受控运行前短时签发。
+
+Linux E2B Compose 的 `compose.override.yaml` 仅为 orchestrator 增加 `ALLOW_SANDBOX_INTERNAL_CIDRS: 100.102.201.53/32`。部署 `/etc/rollforge/e2b-gateway.env`（只含非敏感的 `ROLLFORGE_MODEL_GATEWAY_IP=100.102.201.53`）和 `infra/systemd/rollforge-e2b-gateway-firewall.service`。该单元在 Docker、Tailscale 接口及 Orchestrator healthy 后调用 `scripts/e2b_gateway_firewall.py`，只允许 E2B `veth+` 到该网关 TCP 11441，丢弃到同一 IP 的其他端口，并仅为该目标端口做 Tailscale SNAT。规则带固定注释、可幂等启停；停止单元会删除它拥有的规则。
+
+启用前确认 Firecracker 为 0、Mac 网关无有效会话，并验证 E2B API 与 Orchestrator 健康。启用后用无效会话验证 Sandbox 收到 403，再分别验收有效会话、到期/撤销和预算持久性。关停时先停 Worker/Scheduler、撤销会话，再停止防火墙单元并移除 Compose allowlist、重建 Orchestrator 和刷新 API。主机重启后须重新验收；所有 Hub 写入、Worker、Scheduler 与 Web 实验开关继续保持关闭，直到真实端到端及灾备关卡全部通过。
