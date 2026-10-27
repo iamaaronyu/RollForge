@@ -6,21 +6,25 @@
 
 ## 创建和检查
 
-安装 `pg_dump`、`pg_restore`、`psql`，创建仅 `rollforge` 可读写的加密备份目录。由管理员创建 `/etc/rollforge/backup.env`（`root:rollforge 0640`），其中包含 `ROLLFORGE_DATABASE_URL` 和 `ROLLFORGE_BACKUP_OBJECT_STORAGE_ENDPOINT`、`_BUCKET`、`_ACCESS_KEY`、`_SECRET_KEY`（变量名前缀均为 `ROLLFORGE_BACKUP_OBJECT_STORAGE`）。备份对象存储身份必须独立于 Hub/Worker：仅授予指定 bucket 的 `ListBucket` 与 `GetObject`，不授予写入、删除或其他 bucket 权限；Hub 的最小权限角色保持不变。不得将密钥写入命令行、shell history 或日志。网关账本路径取决于启动 `scripts/model_gateway.py --config ...` 时所用配置路径，预算数据库是该路径替换扩展名为 `.sqlite3` 后的文件。备份不复制含上游 Key 的网关 JSON 配置。
+安装版本匹配的 `pg_dump`、`pg_restore`、`psql`，或使用下述数据库容器客户端方式；创建仅 `rollforge` 可读写的加密备份目录。由管理员创建 `/etc/rollforge/backup.env`（`root:rollforge 0640`），其中包含 `ROLLFORGE_DATABASE_URL` 和 `ROLLFORGE_BACKUP_OBJECT_STORAGE_ENDPOINT`、`_BUCKET`、`_ACCESS_KEY`、`_SECRET_KEY`（变量名前缀均为 `ROLLFORGE_BACKUP_OBJECT_STORAGE`）。备份对象存储身份必须独立于 Hub/Worker：仅授予指定 bucket 的 `ListBucket` 与 `GetObject`，不授予写入、删除或其他 bucket 权限；Hub 的最小权限角色保持不变。不得将密钥写入命令行、shell history 或日志。网关账本路径取决于启动 `scripts/model_gateway.py --config ...` 时所用配置路径，预算数据库是该路径替换扩展名为 `.sqlite3` 后的文件。备份不复制含上游 Key 的网关 JSON 配置。
+
+若宿主机没有 PostgreSQL 客户端，但运行中的 PostgreSQL 容器内含匹配版本客户端，可在 `/etc/rollforge/backup.env` 中增加 `ROLLFORGE_POSTGRES_CLIENT_CONTAINER=rollforge-postgres-1`。工具通过 Docker 本地 socket 在该容器中运行固定的 PostgreSQL 客户端，并将 dump 流写入加密卷；数据库连接密码不会传入 Docker 命令或容器环境。Docker socket 仅 root 可访问，因此这种模式的创建和恢复命令必须由管理员以 root 启动。不要把 `rollforge` 加入 `docker` 组。管理员创建的备份包需在校验前执行 `sudo chown -R rollforge:rollforge "$BACKUP_PATH"`，之后以 `rollforge` 身份校验。
 
 停写并停止服务后，由管理员通过受控终端运行：
 
 ```sh
 BACKUP_ID=$(date -u +%Y%m%dT%H%M%SZ)
+BACKUP_PATH="/mnt/rollforge-backups/${BACKUP_ID}"
 sudo systemd-run --wait --pipe --collect \
-  --uid=rollforge --gid=rollforge \
   --property=WorkingDirectory=/opt/rollforge \
   --property=EnvironmentFile=/etc/rollforge/backup.env \
   /opt/rollforge/.venv/bin/python /opt/rollforge/scripts/backup_rollforge.py create \
-    --destination "/mnt/rollforge-backups/${BACKUP_ID}" \
+    --destination "$BACKUP_PATH" \
     --gateway-budget-db /var/lib/rollforge/private/gateway.sqlite3 \
     --acknowledge-quiescent
 ```
+
+上例以管理员身份运行，适用于容器客户端模式。若使用宿主机 PostgreSQL 客户端，可在 `systemd-run` 参数中加入 `--uid=rollforge --gid=rollforge`，使备份进程直接以服务账号运行。容器客户端模式下，命令成功后执行 `sudo chown -R rollforge:rollforge "$BACKUP_PATH"`，再按前文以 `rollforge` 身份运行 `verify`。
 
 `/mnt/rollforge-backups` 必须是已挂载的加密卷，且父目录归 `rollforge` 所有、权限 0700。预检会拒绝非私有目录、活动写入未确认的调用、缺失/损坏的 SQLite 账本和不安全对象存储 URL。创建成功后，用同一账号完整校验：
 
@@ -34,19 +38,20 @@ sudo -u rollforge /opt/rollforge/.venv/bin/python \
 
 ## 恢复到隔离目标
 
-先在隔离环境创建一个新的空 PostgreSQL 数据库和目标 S3 bucket。恢复目标连接必须用独立文件 `/etc/rollforge/restore-target.env` 提供：`ROLLFORGE_RESTORE_DATABASE_URL`、`ROLLFORGE_RESTORE_OBJECT_STORAGE_ENDPOINT`、`ROLLFORGE_RESTORE_OBJECT_STORAGE_BUCKET`、`ROLLFORGE_RESTORE_OBJECT_STORAGE_ACCESS_KEY`、`ROLLFORGE_RESTORE_OBJECT_STORAGE_SECRET_KEY`；loopback MinIO HTTP 测试才可另设 `ROLLFORGE_RESTORE_OBJECT_STORAGE_ALLOW_LOCAL_HTTP=true`。该文件建议 `root:rollforge 0640`。目标数据库名必须与源库不同；不要把源环境文件用于恢复。
+先在隔离环境创建一个新的空 PostgreSQL 数据库和目标 S3 bucket。恢复目标连接必须用独立文件 `/etc/rollforge/restore-target.env` 提供：`ROLLFORGE_RESTORE_DATABASE_URL`、`ROLLFORGE_RESTORE_OBJECT_STORAGE_ENDPOINT`、`ROLLFORGE_RESTORE_OBJECT_STORAGE_BUCKET`、`ROLLFORGE_RESTORE_OBJECT_STORAGE_ACCESS_KEY`、`ROLLFORGE_RESTORE_OBJECT_STORAGE_SECRET_KEY`；loopback MinIO HTTP 测试才可另设 `ROLLFORGE_RESTORE_OBJECT_STORAGE_ALLOW_LOCAL_HTTP=true`。该文件建议 `root:rollforge 0640`。使用容器客户端时，也需在此文件设置 `ROLLFORGE_POSTGRES_CLIENT_CONTAINER=rollforge-postgres-1`。目标数据库名必须与源库不同；不要把源环境文件用于恢复。
 
 目标 bucket 应为空。若上次恢复中途失败，工具允许其中已有对象为备份中完全相同的一部分，便于重试；多余或同 key 不同内容会拒绝。恢复先逐项上传并读回校验对象，再把 PostgreSQL 自定义归档通过单事务导入空库，最后复算数据库行指纹、状态分布、Revision 摘要及对象引用指纹。工具不会 `DROP`、清空或原地覆盖已有数据库/Bucket。由管理员启动：
 
 ```sh
 sudo systemd-run --wait --pipe --collect \
-  --uid=rollforge --gid=rollforge \
   --property=WorkingDirectory=/opt/rollforge \
   --property=EnvironmentFile=/etc/rollforge/restore-target.env \
   /opt/rollforge/.venv/bin/python /opt/rollforge/scripts/backup_rollforge.py restore \
-    --bundle "/mnt/rollforge-backups/${BACKUP_ID}" \
+    --bundle "$BACKUP_PATH" \
     --acknowledge-isolated-targets
 ```
+
+容器客户端模式下，恢复命令也必须由管理员以 root 启动，以访问 Docker socket；宿主机客户端模式可按需加入 `--uid=rollforge --gid=rollforge`。恢复目标仍须是独立的空数据库和空 bucket。
 
 恢复源与目标配置若同时存在，工具会拒绝源 PostgreSQL 同名数据库或完全相同的对象 endpoint/bucket。恢复后应在隔离环境核对数据库 fingerprint、对象数量与摘要、Hub 只读查询和就绪检查；确认后再由管理员更新应用环境文件指向恢复目标。PostgreSQL 全局角色/所有权/ACL、PostgreSQL 服务配置、S3 bucket 策略/用户、对象版本历史与删除标记均不在此逻辑备份范围内，需分别按部署配置恢复。恢复目标应预先设置正确的身份权限和加密策略。
 
@@ -62,7 +67,7 @@ sudo systemd-run --wait --pipe --collect \
   --property=WorkingDirectory=/opt/rollforge \
   --property=EnvironmentFile=/etc/rollforge/restore-target.env \
   /opt/rollforge/.venv/bin/python /opt/rollforge/scripts/backup_rollforge.py restore-budget \
-    --bundle "/mnt/rollforge-backups/${BACKUP_ID}" \
+    --bundle "$BACKUP_PATH" \
     --gateway-budget-db /var/lib/rollforge/private/gateway.sqlite3 \
     --acknowledge-gateway-stopped
 ```

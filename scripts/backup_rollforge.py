@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import stat
@@ -180,15 +181,36 @@ def postgres_environment(database_url: str, private_dir: Path) -> dict[str, str]
         raise BackupError("PostgreSQL 连接配置无效") from None
     if not url.drivername.startswith("postgresql") or not url.database:
         raise BackupError("备份目标必须是 PostgreSQL 数据库")
+    container = postgres_client_container()
     password_path = private_dir / "pgpass"
     host = url.host or "localhost"
     port = str(url.port or 5432)
     if any(char in value for value in (url.database, url.username or "", host) for char in "\r\n"):
         raise BackupError("PostgreSQL 连接配置包含非法换行")
-    env = {name: value for name, value in os.environ.items() if not name.startswith("PG")}
-    env.update({"PGHOST": host, "PGPORT": port, "PGDATABASE": url.database})
+    if container:
+        env = {
+            name: value
+            for name, value in os.environ.items()
+            if name
+            in {
+                "PATH",
+                "HOME",
+                "DOCKER_HOST",
+                "DOCKER_CONTEXT",
+                "DOCKER_CONFIG",
+                "DOCKER_CERT_PATH",
+                "DOCKER_TLS_VERIFY",
+                "XDG_RUNTIME_DIR",
+            }
+        }
+        env.update({"PGHOST": "/var/run/postgresql", "PGPORT": "5432", "PGDATABASE": url.database})
+    else:
+        env = {name: value for name, value in os.environ.items() if not name.startswith("PG")}
+        env.update({"PGHOST": host, "PGPORT": port, "PGDATABASE": url.database})
     if url.username:
         env["PGUSER"] = url.username
+    if container:
+        return env
     for name in ("sslmode", "sslrootcert", "sslcert", "sslkey", "gssencmode"):
         if name in url.query:
             value = url.query[name]
@@ -210,17 +232,36 @@ def postgres_environment(database_url: str, private_dir: Path) -> dict[str, str]
     return env
 
 
-def postgres_command(name: str) -> str:
+def postgres_client_container() -> str:
+    container = os.environ.get("ROLLFORGE_POSTGRES_CLIENT_CONTAINER", "")
+    if container and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", container):
+        raise BackupError("PostgreSQL 客户端容器名称无效")
+    return container
+
+
+def postgres_command(name: str, env: dict[str, str]) -> list[str]:
+    if name not in {"pg_dump", "pg_restore", "psql"}:
+        raise BackupError("PostgreSQL 客户端工具不受支持")
+    container = postgres_client_container()
+    if container:
+        docker = shutil.which("docker")
+        if not docker:
+            raise BackupError("容器化 PostgreSQL 客户端需要 Docker CLI")
+        command = [docker, "exec", "-i", "--user=postgres"]
+        for variable in ("PGHOST", "PGPORT", "PGDATABASE", "PGUSER"):
+            if variable in env:
+                command.extend(("--env", f"{variable}={env[variable]}"))
+        return [*command, container, name]
     binary = shutil.which(name)
     if not binary:
         raise BackupError(f"缺少 PostgreSQL 客户端工具：{name}")
-    return binary
+    return [binary]
 
 
 def run_postgres(name: str, arguments: list[str], env: dict[str, str]):
     try:
         result = subprocess.run(
-            [postgres_command(name), *arguments],
+            [*postgres_command(name, env), *arguments],
             env=env,
             check=False,
             capture_output=True,
@@ -231,6 +272,52 @@ def run_postgres(name: str, arguments: list[str], env: dict[str, str]):
     if result.returncode:
         raise BackupError(f"PostgreSQL {name} 失败；为保护连接信息已隐藏底层输出")
     return result.stdout.strip()
+
+
+def write_postgres_dump(destination: Path, env: dict[str, str]):
+    if not postgres_client_container():
+        run_postgres(
+            "pg_dump",
+            [
+                "--format=custom",
+                "--no-owner",
+                "--no-privileges",
+                f"--file={destination}",
+            ],
+            env,
+        )
+        return
+
+    command = [
+        *postgres_command("pg_dump", env),
+        "--format=custom",
+        "--no-owner",
+        "--no-privileges",
+        "--file=-",
+    ]
+    process = None
+    try:
+        with destination.open("xb") as stream:
+            os.chmod(destination, 0o600)
+            process = subprocess.Popen(
+                command,
+                env=env,
+                stdout=stream,
+                stderr=subprocess.DEVNULL,
+            )
+            if process.wait() != 0:
+                raise BackupError("PostgreSQL pg_dump 失败；已隐藏底层输出")
+            stream.flush()
+            os.fsync(stream.fileno())
+    except (OSError, subprocess.SubprocessError):
+        if process and process.poll() is None:
+            process.kill()
+            process.wait()
+        destination.unlink(missing_ok=True)
+        raise BackupError("无法安全运行 PostgreSQL pg_dump") from None
+    except BackupError:
+        destination.unlink(missing_ok=True)
+        raise
 
 
 def postgres_state_fingerprint(database_url: str, private_dir: Path) -> dict:
@@ -279,7 +366,7 @@ def postgres_state_fingerprint(database_url: str, private_dir: Path) -> dict:
     try:
         process = subprocess.Popen(
             [
-                postgres_command("psql"),
+                *postgres_command("psql", env),
                 "--no-psqlrc",
                 "--tuples-only",
                 "--no-align",
@@ -338,7 +425,7 @@ def postgres_state_fingerprint(database_url: str, private_dir: Path) -> dict:
     try:
         process = subprocess.Popen(
             [
-                postgres_command("psql"),
+                *postgres_command("psql", env),
                 "--no-psqlrc",
                 "--tuples-only",
                 "--no-align",
@@ -647,16 +734,7 @@ def create_backup(destination: Path, budget_db: Path, *, quiescent: bool):
             initial_references = postgres_state_fingerprint(database_url, Path(private))
             database_fingerprint = public_database_fingerprint(initial_references)
             postgres_env = postgres_environment(database_url, Path(private))
-            run_postgres(
-                "pg_dump",
-                [
-                    "--format=custom",
-                    "--no-owner",
-                    "--no-privileges",
-                    f"--file={staging / 'database.dump'}",
-                ],
-                postgres_env,
-            )
+            write_postgres_dump(staging / "database.dump", postgres_env)
         os.chmod(staging / "database.dump", 0o600)
         with (staging / "database.dump").open("rb") as stream:
             os.fsync(stream.fileno())
@@ -740,22 +818,25 @@ def database_is_empty(database_url: str, private_dir: Path) -> dict[str, str]:
 def restore_database(bundle: Path, database_url: str, expected_fingerprint: dict):
     with tempfile.TemporaryDirectory(prefix="pg-restore-") as private:
         env = database_is_empty(database_url, Path(private))
+        container_client = bool(postgres_client_container())
+        dump_stream = (bundle / "database.dump").open("rb") if container_client else None
         try:
             restore = subprocess.Popen(
                 [
-                    postgres_command("pg_restore"),
+                    *postgres_command("pg_restore", env),
                     "--exit-on-error",
                     "--no-owner",
                     "--no-privileges",
-                    str(bundle / "database.dump"),
+                    "-" if container_client else str(bundle / "database.dump"),
                 ],
+                stdin=dump_stream,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 env=env,
             )
             psql = subprocess.run(
                 [
-                    postgres_command("psql"),
+                    *postgres_command("psql", env),
                     "--no-psqlrc",
                     "--set=ON_ERROR_STOP=1",
                     "--single-transaction",
@@ -774,6 +855,9 @@ def restore_database(bundle: Path, database_url: str, expected_fingerprint: dict
                 restore.kill()
                 restore.wait()
             raise BackupError("PostgreSQL 恢复工具启动失败") from None
+        finally:
+            if dump_stream:
+                dump_stream.close()
         if restore.returncode or psql.returncode:
             raise BackupError("PostgreSQL 恢复失败；为保护连接信息已隐藏底层输出")
         actual = public_database_fingerprint(

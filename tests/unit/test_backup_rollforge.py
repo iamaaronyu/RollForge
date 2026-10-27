@@ -9,6 +9,7 @@ import pytest
 from scripts.backup_rollforge import (
     BackupError,
     create_backup,
+    postgres_command,
     postgres_environment,
     record_file,
     require_no_active_gateway_sessions,
@@ -195,6 +196,68 @@ def test_postgres_password_is_kept_out_of_process_environment(tmp_path):
     assert secret not in " ".join(environment.values())
     assert passfile.stat().st_mode & 0o777 == 0o600
     assert "do-not-show\\:this" in passfile.read_text()
+
+
+def test_containerized_postgres_client_uses_socket_without_database_password(tmp_path, monkeypatch):
+    monkeypatch.setenv("ROLLFORGE_POSTGRES_CLIENT_CONTAINER", "rollforge-postgres-1")
+    monkeypatch.setattr("scripts.backup_rollforge.shutil.which", lambda name: "/usr/bin/docker")
+    environment = postgres_environment(
+        "postgresql://rollforge:must-not-be-forwarded@127.0.0.1:55432/rollforge",
+        tmp_path,
+    )
+
+    assert environment["PGHOST"] == "/var/run/postgresql"
+    assert environment["PGPORT"] == "5432"
+    assert environment["PGUSER"] == "rollforge"
+    assert "PGPASSFILE" not in environment
+    assert all("must-not-be-forwarded" not in value for value in environment.values())
+
+    command = postgres_command("psql", environment)
+    assert command[:4] == ["/usr/bin/docker", "exec", "-i", "--user=postgres"]
+    assert command[-2:] == ["rollforge-postgres-1", "psql"]
+    assert all("must-not-be-forwarded" not in value for value in command)
+
+
+def test_containerized_postgres_client_rejects_invalid_container_name(monkeypatch):
+    monkeypatch.setenv("ROLLFORGE_POSTGRES_CLIENT_CONTAINER", "db;touch /tmp/pwned")
+
+    with pytest.raises(BackupError, match="容器名称无效"):
+        postgres_command("psql", {"PGDATABASE": "rollforge"})
+
+
+def test_postgres_client_command_only_allows_known_tools():
+    with pytest.raises(BackupError, match="客户端工具不受支持"):
+        postgres_command("sh", {})
+
+
+def test_containerized_postgres_dump_streams_to_private_host_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("ROLLFORGE_POSTGRES_CLIENT_CONTAINER", "rollforge-postgres-1")
+    monkeypatch.setattr(
+        "scripts.backup_rollforge.postgres_command",
+        lambda name, _env: ["docker", "exec", "-i", "rollforge-postgres-1", name],
+    )
+
+    class FakeProcess:
+        def __init__(self, command, *, stdout, **_kwargs):
+            self.command = command
+            stdout.write(b"custom-format-dump")
+
+        @staticmethod
+        def wait():
+            return 0
+
+        @staticmethod
+        def poll():
+            return 0
+
+    monkeypatch.setattr("scripts.backup_rollforge.subprocess.Popen", FakeProcess)
+    destination = tmp_path / "database.dump"
+    from scripts.backup_rollforge import write_postgres_dump
+
+    write_postgres_dump(destination, {"PGDATABASE": "rollforge"})
+
+    assert destination.read_bytes() == b"custom-format-dump"
+    assert destination.stat().st_mode & 0o777 == 0o600
 
 
 def test_backup_uses_dedicated_read_only_object_storage_identity(tmp_path, monkeypatch):
