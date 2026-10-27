@@ -1,6 +1,9 @@
 """专用 PostgreSQL 验收；每个测试创建独立 schema，仅清理自己创建的资源。"""
 
 import asyncio
+import os
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -14,7 +17,7 @@ from rollforge_api.db import Base
 from rollforge_api.execution_service import ExecutionService, LeaseRejected, SubmissionConflict
 from rollforge_api.models import Execution, Trial
 from rollforge_schemas.domain import RevisionRef, TrialStatus
-from rollforge_schemas.execution import CreateJob, ExecutionSnapshot, ResultCommit
+from rollforge_schemas.execution import CreateJob, ExecutionSnapshot, LeaseIdentity, ResultCommit
 from sqlalchemy import func, select, text, update
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -241,6 +244,67 @@ async def test_recovery_budget_and_service_restart(engine):
     assert await restarted.recover_expired() == 1
     assert await restarted.claim(uuid4()) is None
     assert (await restarted.get_job(job.job_id, job.owner_id)).trial.status == TrialStatus.FAILED
+
+
+async def test_sigkill_lease_holder_process_recovers_and_enforces_retry_budget(engine):
+    """A dead OS process loses its lease; recovery fences it and bounds retries."""
+    async with engine.connect() as connection:
+        schema = await connection.scalar(text("SELECT current_schema()"))
+    process_env = {
+        "ROLLFORGE_TEST_DATABASE_URL": os.environ["ROLLFORGE_TEST_DATABASE_URL"],
+        "ROLLFORGE_TEST_SCHEMA": schema,
+        "PYTHONPATH": os.pathsep.join(filter(None, [str(ROOT), os.environ.get("PYTHONPATH", "")])),
+    }
+    if os.environ.get("PATH"):
+        process_env["PATH"] = os.environ["PATH"]
+    service = ExecutionService(engine)
+    job = request(max_executions=2).model_copy(update={"trial_count": 1})
+    await service.create_job(job)
+
+    async def claim_then_kill():
+        process_env["ROLLFORGE_TEST_WORKER_ID"] = str(uuid4())
+        process = subprocess.Popen(
+            [sys.executable, str(ROOT / "tests/integration/process_claim_fixture.py")],
+            cwd=ROOT,
+            env=process_env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        try:
+            line = await asyncio.wait_for(asyncio.to_thread(process.stdout.readline), timeout=10)
+            assert line, "claim subprocess exited before publishing its test lease"
+            lease = LeaseIdentity.model_validate_json(line)
+            process.kill()
+            await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=10)
+            return lease
+        finally:
+            if process.poll() is None:
+                process.kill()
+                await asyncio.to_thread(process.wait)
+            if process.stdout:
+                process.stdout.close()
+
+    first = await claim_then_kill()
+    assert first.fencing_token == 1
+    await asyncio.sleep(1.2)
+    assert await service.recover_expired() == 1
+
+    second = await claim_then_kill()
+    assert second.trial_id == first.trial_id
+    assert second.execution_id != first.execution_id
+    assert second.fencing_token == first.fencing_token + 1
+    with pytest.raises(LeaseRejected):
+        await service.finish(first, result(job, first))
+
+    await asyncio.sleep(1.2)
+    assert await service.recover_expired() == 1
+    with pytest.raises(LeaseRejected):
+        await service.finish(second, result(job, second))
+    assert await service.claim(uuid4()) is None
+    current = await service.get_job(job.job_id, job.owner_id)
+    assert current.trial.status == TrialStatus.FAILED
 
 
 async def test_active_renewal_and_failed_submission(engine):

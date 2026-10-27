@@ -10,3 +10,9 @@
 结果：**33 passed、1 skipped，13.68 秒**。Worker 用例中租约领取、验证前拒绝、过期检查和幂等完成均在真实 PostgreSQL 上通过。每个用例通过共享 fixture 创建随机 `test_execution_<uuid>` schema，迁移仅应用于该 schema，结束时自动删除；事后查询确认遗留测试 schema 数量为 **0**。
 
 唯一跳过项依赖独立固定版本 MinIO 二进制。此次没有对线上 Silo bucket 做写入，没有启动 Worker/Scheduler、Harbor、E2B Sandbox 或模型请求。Hub/Web 仍为 active，Scheduler 为 inactive；Hub 控制面写入与执行开关仍为 false。因此这项结果补充了 Worker 数据库租约回归，不能替代真实 Silo Worker 提交、双 Worker、Sandbox 中断恢复或多 Trial 端到端验收。
+
+## 2026-10-27 租约持有进程强制终止恢复
+
+在 Linux 节点使用单独的 PostgreSQL 16 临时容器（只绑定 `127.0.0.1`）运行 `tests/integration/test_execution_postgres.py`，结果 **13 passed**。新增验收由独立 Python 测试子进程领取 1 秒租约后保持存活，父测试进程发送 SIGKILL；随后由新进程执行数据库回收并再次领取。连续两次强制终止后验证 Execution ID 与 fencing token 递增、旧 Execution 提交被拒绝、达到 `max_executions=2` 后 Trial 转为 FAILED 且不再可领取。临时容器在测试结束时自动删除，所有随机测试 schema 由 fixture 清理。
+
+这项证据覆盖租约持有进程突然死亡后的 PostgreSQL 租约恢复与有界 Retry；测试子进程只领取执行权，没有运行正式 Worker、Scheduler、Harbor、E2B、Sandbox 或模型调用。因此它不代表 Worker SIGKILL 后 Harbor Sandbox 能及时清理，也不替代双 Worker 多 Trial 主链和主机重启恢复验收。
