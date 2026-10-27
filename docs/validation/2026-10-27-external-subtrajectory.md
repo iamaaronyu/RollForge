@@ -12,4 +12,4 @@ Viewer 投影版本升至 3。主轨迹投影仅在外部 `trajectory_path` 与�
 
 另在 `100.106.244.122` 完成当前代码的真实 API/对象存储闭环：一次性 PostgreSQL 16 容器和隔离 schema，当前提交源码临时导入，Hub API 通过 ASGI HTTP 调用，Silo 使用随机新建 bucket。**`POSTGRES16_SILO_EXTERNAL_API=PASS`**。检查了创建与接受合成执行产物、主轨迹仅返回 Manifest 内路径、外部 JSON 轨迹读回、其他用户 404、Worker 403、路径穿越/缺失路径 404、非 JSON 415、超过 1 MiB 为 413，以及对象篡改后为 503。测试结束删除了 S3 bucket、schema、PostgreSQL 容器和临时源码；没有更改运行 Hub/Web 或业务对象。
 
-因此本功能已获得真实 PostgreSQL + Silo API 集成证据；`make check` 中的独立 MinIO fixture 仍因测试二进制未配置而跳过。当前 Linux systemd Hub/Web 仍运行先前部署版本，本提交仅在 GitHub，尚未部署到常驻服务。
+因此本功能已获得真实 PostgreSQL + Silo API 集成证据；`make check` 中的独立 MinIO fixture 仍因测试二进制未配置而跳过。包含本功能的 `d209366` 已部署到 Linux systemd Hub/Web；Hub readiness 与 Web 首页返回 200，Scheduler 与全部写入/执行门保持关闭。升级细节见[Linux 升级验收](2026-10-27-linux-upgrade.md)。

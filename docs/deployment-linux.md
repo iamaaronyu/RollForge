@@ -198,7 +198,9 @@ sudo journalctl -u rollforge-hub.service -u rollforge-scheduler.service --since 
 
 PostgreSQL、对象桶与网关请求预算的停写备份、隔离恢复步骤和恢复边界见 [跨组件备份与恢复手册](backup-recovery.md)。该工具只恢复到空 DB/隔离 bucket；不原地覆盖，也不改变正式执行开关。
 
-升级前停止 Scheduler 以停止领取并等待当前执行优雅退出，然后停止 Hub；保存数据库备份并记录当前代码版本。部署新代码和锁文件后运行 `make check`、`make runtime-check`、数据库迁移检查，再启动 Hub，最后启动 Scheduler。不要在活动执行期间覆盖 Runtime 或任务目录。
+升级前停止 Scheduler 以停止领取并等待当前执行优雅退出，然后停止 Hub/Web；记录当前提交并确认服务 checkout 没有本地改动。目标提交应先在隔离 checkout 完成 `make check`、`make runtime-check`、锁文件和迁移差异检查。确认数据库迁移策略和备份后，再把服务 checkout 快进到固定提交、重新安装锁定依赖并重建 Web，运行 `alembic upgrade head` 后启动 Hub，验证 `/health/ready`，再启动 Web 并验证首页。服务路径固定在 `/opt/rollforge` 时，切换代码后必须重新安装 Python console scripts（例如 `uv sync --reinstall`），防止脚本 shebang 仍指向临时构建目录。Web 与 Hub readiness 应采用有界重试，不要在 `systemctl start` 返回后立即假定端口已监听。
+
+若切换后任一验收失败，停止新服务，把干净 checkout 切回记录的旧提交，按原锁文件重新安装依赖并重建 Web，再启动旧 Hub/Web 验证 readiness。迁移已改变数据库时，不能只回切代码；必须执行预先审核的向前兼容或恢复方案。不要直接删除旧版本回退点，也不要在有活动执行、未完成租约或未知数据库写入时覆盖代码。2026-10-27 的实际升级与恢复记录见[Linux 升级验收](validation/2026-10-27-linux-upgrade.md)。
 
 主机重启后依次检查 PostgreSQL、对象存储、Hub readiness 和 Scheduler 日志。未完成执行由 PostgreSQL 租约过期回收；若本地 spool 中存在 `native-ready.json` 或 `pending-commit.json`，使用 Worker 的 `--resume` 恢复对应 Execution，不重跑模型。确认 Worker 已接受提交或明确标记失败后，才清理对应 spool。不要清除数据库记录来“修复”孤儿产物；对象存储清理需按 Execution manifest 核对。
 
