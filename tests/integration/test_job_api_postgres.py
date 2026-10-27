@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import secrets
+import socket
 import subprocess
 import sys
 import time
@@ -429,6 +430,132 @@ asyncio.run(main())
                 select(func.count(Execution.id)).where(Execution.status == ExecutionStatus.RUNNING)
             )
         assert running == 1
+
+
+async def test_global_capacity_is_shared_by_two_hub_http_processes(engine):
+    async with clients(engine, global_execution_limit=1) as (_, sdk, _, identities, tokens):
+        await sdk["user"].create_job(job_request().model_copy(update={"trial_count": 2}))
+        async with engine.connect() as connection:
+            schema = await connection.scalar(text("SELECT current_schema()"))
+
+        script = """
+import hashlib
+import json
+import os
+import uvicorn
+from pydantic import SecretStr
+from sqlalchemy.ext.asyncio import create_async_engine
+from rollforge_common.settings import Settings
+from rollforge_api.main import create_app
+
+worker_id = os.environ["ROLLFORGE_PROCESS_TEST_WORKER_ID"]
+worker_token = os.environ["ROLLFORGE_PROCESS_TEST_TOKEN"]
+settings = Settings(
+    _env_file=None,
+    database_url=SecretStr(os.environ["ROLLFORGE_TEST_DATABASE_URL"]),
+    api_credentials=SecretStr(json.dumps([{
+        "subject_id": worker_id,
+        "role": "WORKER",
+        "token_sha256": hashlib.sha256(worker_token.encode()).hexdigest(),
+    }])),
+    control_plane_writes_enabled=True,
+    global_execution_limit=1,
+)
+engine = create_async_engine(
+    settings.database_url.get_secret_value(),
+    connect_args={"server_settings": {"search_path": os.environ["ROLLFORGE_PROCESS_TEST_SCHEMA"]}},
+)
+app = create_app(settings, engine=engine)
+uvicorn.run(
+    app,
+    host="127.0.0.1",
+    port=int(os.environ["ROLLFORGE_PROCESS_TEST_PORT"]),
+    log_level="critical",
+)
+"""
+
+        def unused_loopback_port():
+            with socket.socket() as listener:
+                listener.bind(("127.0.0.1", 0))
+                return listener.getsockname()[1]
+
+        workers = (("worker", identities["worker"]), ("other_worker", identities["other_worker"]))
+        processes = []
+        clients_by_process = []
+        selected_ports = set()
+        for name, worker_id in workers:
+            port = unused_loopback_port()
+            while port in selected_ports:
+                port = unused_loopback_port()
+            selected_ports.add(port)
+            env = os.environ.copy()
+            env["ROLLFORGE_PROCESS_TEST_SCHEMA"] = schema
+            env["ROLLFORGE_PROCESS_TEST_PORT"] = str(port)
+            env["ROLLFORGE_PROCESS_TEST_WORKER_ID"] = str(worker_id)
+            env["ROLLFORGE_PROCESS_TEST_TOKEN"] = tokens[name]
+            process = subprocess.Popen(
+                [sys.executable, "-c", script],
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            processes.append(process)
+            clients_by_process.append(httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}"))
+
+        try:
+            deadline = time.monotonic() + 20
+            ready = False
+            while time.monotonic() < deadline:
+                failed = next(
+                    (process for process in processes if process.poll() is not None), None
+                )
+                if failed is not None:
+                    error = failed.communicate(timeout=5)[1]
+                    raise AssertionError(f"Hub HTTP process exited before readiness: {error}")
+                responses = await gather(
+                    *(client.get("/health/ready") for client in clients_by_process),
+                    return_exceptions=True,
+                )
+                if all(
+                    isinstance(response, httpx.Response) and response.status_code == 200
+                    for response in responses
+                ):
+                    ready = True
+                    break
+                await sleep(0.05)
+            assert ready, "both Hub HTTP processes must become ready"
+
+            claims = await gather(
+                *(
+                    client.post(
+                        "/api/v1/worker/leases/claim",
+                        json={},
+                        headers={"Authorization": "Bearer " + tokens[name]},
+                    )
+                    for (name, _worker_id), client in zip(workers, clients_by_process, strict=True)
+                )
+            )
+            assert sorted(response.status_code for response in claims) == [200, 204]
+            async with engine.connect() as connection:
+                running = await connection.scalar(
+                    select(func.count(Execution.id)).where(
+                        Execution.status == ExecutionStatus.RUNNING
+                    )
+                )
+            assert running == 1
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.terminate()
+            for process in processes:
+                try:
+                    process.communicate(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.communicate(timeout=5)
+            for client in clients_by_process:
+                await client.aclose()
 
 
 async def test_worker_recovery_api_requeues_only_expired_leases(engine):
