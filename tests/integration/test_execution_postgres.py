@@ -144,7 +144,8 @@ async def test_global_capacity_is_shared_by_execution_services_and_recovery(engi
 
     committed = await first_service.finish(active[0], result(job, active[0]))
     assert committed.status == TrialStatus.COMPLETED
-    assert await second_service.claim(uuid4()) is not None
+    running = await second_service.claim(uuid4())
+    assert running is not None
 
     stale = active[1]
     await expire(engine, stale)
@@ -153,8 +154,16 @@ async def test_global_capacity_is_shared_by_execution_services_and_recovery(engi
     assert await second_service.recover_expired() == 1
     replacement = await first_service.claim(uuid4())
     assert replacement is not None
-    assert replacement.trial_id == stale.trial_id
-    assert replacement.fencing_token == stale.fencing_token + 1
+    assert replacement.trial_id != stale.trial_id
+    assert await first_service.claim(uuid4()) is None
+    assert (await first_service.finish(replacement, result(job, replacement))).status == (
+        TrialStatus.COMPLETED
+    )
+    retried = await second_service.claim(uuid4())
+    assert retried is not None
+    assert retried.trial_id == stale.trial_id
+    assert retried.execution_id != stale.execution_id
+    assert retried.fencing_token == stale.fencing_token + 1
 
 
 async def test_skip_locked_claim_does_not_wait(engine):
