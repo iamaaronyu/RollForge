@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { experimental, hub, HubProblem, labels, message, resultText, validId, type JobView, type JobAggregation, type ExecutionList, type TrialList } from "../../../lib/hub";
 import { CancelJobButton, CancelTrialButton } from "./cancel-buttons";
+import { RefreshWhileActive } from "../refresh-while-active";
 
 export const dynamic = "force-dynamic";
 export default async function Detail({ params, searchParams }: {
@@ -27,6 +28,7 @@ async function renderDetail(params: Promise<{ jobId: string }>, searchParams: Pr
     return <main><Link href="/jobs">← 我的任务</Link><h1>暂时无法读取任务</h1><p role="alert">{message(error)}</p><Link href={`/jobs/${jobId}`}>重试</Link></main>;
   }
   return <main><header><Link href="/jobs">← 我的任务</Link><Link href={`/jobs/${jobId}`}>刷新</Link></header>
+    <RefreshWhileActive active={job.terminal_trial_count < job.trial_count} />
     {error === "cancel" && <p role="alert">取消请求未完成，请刷新任务状态后重试。</p>}
     {notice === "cancelled" && <p role="status">取消请求已接受；Worker 会在下次续租检查时终止运行并清理 Sandbox。</p>}
     <h1>执行详情</h1><p className="identifier">{jobId}</p>

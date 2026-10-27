@@ -30,7 +30,7 @@ RollForge 已打通单 Trial 的真实执行与恢复闭环：鉴权 Hub → Pos
 | Hub 联合恢复 | 实际提交后响应丢失，重建应用/SDK，租约过期且 Manifest 删除后幂等返回；旧产物无法绕过新执行权 | 真实 PostgreSQL/MinIO 与鉴权 API；应用重建不等同于宿主掉电 |
 | Worker | 单次领取、续租、任务归档校验、凭证白名单、独立 Runtime、上传与 pending-commit、resume | 真实 HTTP 主链通过；修复 venv 解释器解析和 Mac 系统代理问题 |
 | 真实 Worker 故障验收 | reward 1.0、0.0、提交响应丢失后恢复、协作式取消清理、同 Trial 新 Execution Retry、旧提交 409 | Sandbox/Firecracker 均为 0；另有真实 Scheduler/`Worker.once()` 经鉴权 Hub HTTP 后被 SIGKILL、替代 Scheduler 恢复租约的 PostgreSQL 验收；该测试用阻塞 Runtime 替身，不覆盖 Sandbox 回收，Worker+Harbor/E2B SIGKILL 或掉电清理仍待验收 |
-| 前端业务页 | 中文任务创建/列表/详情、服务端审核目录、Execution 历史与生成类型 | 合成数据浏览器验收通过；已有基础产物和主轨迹 Viewer；仍无登录、轮询 |
+| 前端业务页 | 中文任务创建/列表/详情、服务端审核目录、Execution 历史与生成类型 | 合成数据浏览器验收通过；已有基础产物和主轨迹 Viewer；活动 Job 列表与详情页可见时每 10 秒自动刷新；仍无用户登录 |
 | 多 Trial Job | `trial_count` 1–1000、快照确定性展开、样本分页、Job 汇总计数及 Job 级 Execution 游标；页面可创建并展示样本 | 真实 PostgreSQL 已验证 100 个逻辑 Trial 展开/分页/领取；Registry 绑定的真实 Harbor/E2B/DeepSeek Job 已 2/2 完成（并发 1）；扩大真实 Sandbox 样本、多进程 Worker 与故障恢复仍待验收 |
 | 持续调度 | 有界常驻 Worker、空队列轮询、失败退避、优雅停机、FIFO 队列、租约自动回收及 PostgreSQL 全局领取容量 | 真实 PostgreSQL + Silo 全集成 60 passed、2 skipped；同进程、独立 OS 进程和双 Hub HTTP 竞争、100 Trial 展开/领取、FIFO Retry 和回收边界通过；新增真实 PostgreSQL 16 Scheduler/`Worker.once()` 子进程经鉴权 Hub HTTP 的 SIGKILL/重启恢复回归 13 passed；常驻双 Worker Harbor/E2B、真实 Sandbox 中断清理和主机重启仍待验收 |
 | Registry 运行绑定与网页 | 用户可登记不可变 Task/Agent/Model 版本、浏览资产及最近 100 个 revision，并基于版本提交 Job；Hub 校验所有权、digest 和部署审核目录；直传可运行快照被拒绝 | 真实 PostgreSQL 的分页、所有权、摘要、审核不匹配及拒绝绕过用例通过；Registry 绑定的真实双 Trial 平台运行已通过 2/2；网页仍是单用户静态 USER token 模式 |

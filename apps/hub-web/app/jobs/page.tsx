@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { randomUUID } from "node:crypto";
 import { createJob } from "./actions";
+import { RefreshWhileActive } from "./refresh-while-active";
 import { experimental, hub, labels, message, resultText, validId, type JobList, type TaskList } from "../../lib/hub";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,7 @@ export default async function Jobs({ searchParams }: { searchParams: Promise<{ a
       {!enabled && <p className="note">当前仅可查看；创建需要服务端访问凭证、已审核目录、控制面写开关和 Web 实验开关。</p>}
     </section>
     <section className="panel"><div className="row"><h2>我的 Job</h2><Link href="/jobs">刷新</Link></div>
+      <RefreshWhileActive active={Boolean(jobs?.items.some(job => job.terminal_trial_count < job.trial_count))} />
       {jobs?.items.length ? <div className="table-wrap"><table><thead><tr><th>Job</th><th>已结束样本</th><th>首样本状态</th><th>首样本结果</th></tr></thead>
         <tbody>{jobs.items.map(job => <tr key={job.job_id}><td><Link href={`/jobs/${job.job_id}`}>{job.job_id}</Link></td><td>{job.terminal_trial_count} / {job.trial_count}</td><td>{labels[job.trial.status]}</td><td>{resultText(job.trial.result)}</td></tr>)}</tbody></table></div> : <p>暂无任务记录。</p>}
       <nav>{jobs?.next_cursor && <Link href={`/jobs?after=${jobs.next_cursor}`}>下一页 →</Link>}</nav>
