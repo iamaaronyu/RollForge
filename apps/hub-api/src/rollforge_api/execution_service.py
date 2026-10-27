@@ -42,9 +42,16 @@ class SubmissionConflict(Exception):
 
 
 class ExecutionService:
-    def __init__(self, engine: AsyncEngine):
+    def __init__(self, engine: AsyncEngine, *, global_execution_limit: int = 1):
         if engine.dialect.name != "postgresql":
             raise ValueError("Execution service requires PostgreSQL")
+        if (
+            isinstance(global_execution_limit, bool)
+            or not isinstance(global_execution_limit, int)
+            or not 1 <= global_execution_limit <= 256
+        ):
+            raise ValueError("Global execution limit must be 1..256")
+        self.global_execution_limit = global_execution_limit
         self.sessions = async_sessionmaker(engine, expire_on_commit=False)
 
     @staticmethod
@@ -443,6 +450,14 @@ class ExecutionService:
     ) -> Lease | None:
         duration = self.duration(lease_seconds)
         async with self.sessions.begin() as session:
+            # Transaction advisory lock makes the count-and-claim decision global
+            # across Hub processes; it is released automatically on commit/rollback.
+            await session.execute(select(func.pg_advisory_xact_lock(0x524F4C4C, 0x464F5247)))
+            active = await session.scalar(
+                select(func.count(Execution.id)).where(Execution.status == ExecutionStatus.RUNNING)
+            )
+            if active >= self.global_execution_limit:
+                return None
             query = (
                 select(Trial)
                 .join(Job, Job.id == Trial.job_id)

@@ -99,6 +99,7 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
             "stage": "runtime-spike",
             "execution_enabled": False,
             "control_plane_writes_enabled": settings.control_plane_writes_enabled,
+            "global_execution_limit": settings.global_execution_limit,
             "message": "Harbor/E2B compatibility spike is required before enabling execution.",
         }
 

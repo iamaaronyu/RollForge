@@ -4,7 +4,7 @@
 |---|---|
 | `GET /health/live` | 进程存活，不依赖外部服务 |
 | `GET /health/ready` | 检查数据库连通性，不可用时返回 503 |
-| `GET /api/v1/platform` | 版本、开发阶段与执行能力状态 |
+| `GET /api/v1/platform` | 版本、开发阶段、执行开关与 PostgreSQL 全局运行容量 |
 | `GET /openapi.json` | 自动生成的 API 契约 |
 | `GET /docs` | 交互式 API 文档 |
 | `POST /api/v1/jobs` | USER 创建 Job 并按 `trial_count` 展开 1–1000 个 Trial；相同输入幂等 |

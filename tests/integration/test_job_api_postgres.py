@@ -34,12 +34,13 @@ from sqlalchemy import func, select, text, update
 
 
 @asynccontextmanager
-async def clients(engine, writes=True, approved_tasks_file=None):
+async def clients(engine, writes=True, approved_tasks_file=None, global_execution_limit=1):
     identities = {name: uuid4() for name in ("user", "other_user", "worker", "other_worker")}
     tokens = {name: secrets.token_urlsafe(32) for name in identities}
     settings = Settings(
         _env_file=None,
         control_plane_writes_enabled=writes,
+        global_execution_limit=global_execution_limit,
         approved_tasks_file=approved_tasks_file,
         api_credentials=SecretStr(
             json.dumps(
@@ -236,7 +237,7 @@ async def test_multi_trial_expansion_pagination_and_retry_identity(engine):
 
     from rollforge_api.execution_service import ExecutionService
 
-    async with clients(engine) as (_, sdk, raw, _ids, tokens):
+    async with clients(engine, global_execution_limit=3) as (_, sdk, raw, _ids, tokens):
         body = job_request().model_copy(update={"trial_count": 3})
         job = await sdk["user"].create_job(body)
         assert job.trial_count == 3 and job.terminal_trial_count == 0
@@ -293,6 +294,20 @@ async def test_multi_trial_expansion_pagination_and_retry_identity(engine):
         assert after_retry.items[0].execution_sequence == 4
         refreshed = await sdk["user"].get_job(job.job_id)
         assert refreshed.trial_count == 3 and refreshed.terminal_trial_count == 1
+
+
+async def test_database_global_execution_limit_across_concurrent_claims(engine):
+    async with clients(engine, global_execution_limit=2) as (_, sdk, _, _, _):
+        job = await sdk["user"].create_job(job_request().model_copy(update={"trial_count": 5}))
+        claims = await gather(*(sdk["worker"].claim() for _ in range(8)))
+        leases = [lease for lease in claims if lease is not None]
+        assert len(leases) == 2
+        assert await sdk["worker"].claim() is None
+
+        assert (await sdk["worker"].finish(commit(job, leases[0]))).status == TrialStatus.COMPLETED
+        replacement = await sdk["worker"].claim()
+        assert replacement is not None
+        assert replacement.trial_id not in {lease.trial_id for lease in leases}
 
 
 async def test_worker_recovery_api_requeues_only_expired_leases(engine):

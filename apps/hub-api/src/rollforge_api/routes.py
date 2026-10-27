@@ -74,7 +74,10 @@ def worker(identity: Annotated[Principal, Depends(principal)]):
 def service(request: Request) -> ExecutionService:
     if request.app.state.engine.dialect.name != "postgresql":
         raise ApiFailure(503, ErrorCode.DATABASE_UNAVAILABLE, "控制面需要 PostgreSQL")
-    return ExecutionService(request.app.state.engine)
+    return ExecutionService(
+        request.app.state.engine,
+        global_execution_limit=request.app.state.settings.global_execution_limit,
+    )
 
 
 def writes(request: Request):

@@ -47,7 +47,7 @@ def result(lease):
 
 
 async def test_runnable_only_claim_skips_metadata_jobs(engine):
-    service = ExecutionService(engine)
+    service = ExecutionService(engine, global_execution_limit=2)
     metadata = await service.create_job(request(False))
     runnable = await service.create_job(request())
     lease = await service.claim(uuid4(), runnable_only=True)

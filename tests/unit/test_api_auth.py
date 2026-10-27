@@ -53,7 +53,9 @@ def test_roles_and_default_write_gate():
         assert client.get(f"/api/v1/jobs/{uuid4()}", headers=worker_header).status_code == 403
         response = client.post("/api/v1/worker/leases/claim", json={}, headers=worker_header)
         assert response.status_code == 503 and response.json()["code"] == "WRITES_DISABLED"
-        assert client.get("/api/v1/platform").json()["execution_enabled"] is False
+        platform = client.get("/api/v1/platform").json()
+        assert platform["execution_enabled"] is False
+        assert platform["global_execution_limit"] == 1
         assert user not in response.text and worker not in response.text
 
 

@@ -234,6 +234,19 @@ def test_preflight_requires_hub_to_use_rollforge_service_ports(tmp_path, key, va
         )
 
 
+@pytest.mark.parametrize("value", ["0", "257", "two"])
+def test_preflight_bounds_global_execution_limit(tmp_path, value):
+    files = deployment_files(tmp_path)
+    repo, compose_env, hub_env, worker_env, web_env = files
+    values = dict(line.split("=", 1) for line in hub_env.read_text().splitlines())
+    values["ROLLFORGE_GLOBAL_EXECUTION_LIMIT"] = value
+    write_env(hub_env, values, 0o640)
+    with pytest.raises(PreflightError, match="ROLLFORGE_GLOBAL_EXECUTION_LIMIT"):
+        validate_environment(
+            repo, compose_env, hub_env, worker_env, web_env, None, node_check=lambda: None
+        )
+
+
 @pytest.mark.parametrize(
     ("target", "key", "value", "message"),
     [

@@ -457,6 +457,7 @@ def validate_environment(
             "ROLLFORGE_REDIS_URL",
             "ROLLFORGE_API_CREDENTIALS",
             "ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED",
+            "ROLLFORGE_GLOBAL_EXECUTION_LIMIT",
             "ROLLFORGE_APPROVED_TASKS_FILE",
             "ROLLFORGE_OBJECT_STORAGE_ENDPOINT",
             "ROLLFORGE_OBJECT_STORAGE_BUCKET",
@@ -486,6 +487,12 @@ def validate_environment(
         raise PreflightError("Hub 必须设置 ROLLFORGE_ENVIRONMENT=production")
     if hub.get("ROLLFORGE_CONTROL_PLANE_WRITES_ENABLED", "false").lower() != "false":
         raise PreflightError("首次部署必须保持控制面写入关闭")
+    try:
+        global_execution_limit = int(hub.get("ROLLFORGE_GLOBAL_EXECUTION_LIMIT", "1"))
+    except ValueError:
+        raise PreflightError("ROLLFORGE_GLOBAL_EXECUTION_LIMIT 必须是 1–256 的整数") from None
+    if not 1 <= global_execution_limit <= 256:
+        raise PreflightError("ROLLFORGE_GLOBAL_EXECUTION_LIMIT 必须是 1–256 的整数")
     known_credentials = credentials(hub["ROLLFORGE_API_CREDENTIALS"])
     user_hashes = {item["token_sha256"] for item in known_credentials if item["role"] == "USER"}
     worker_hashes = {item["token_sha256"] for item in known_credentials if item["role"] == "WORKER"}

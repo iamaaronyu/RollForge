@@ -9,7 +9,9 @@ def test_scaffold_health_and_readiness():
     with TestClient(create_app(settings)) as client:
         assert client.get("/health/live").status_code == 200
         assert client.get("/health/ready").json()["status"] == "ready"
-        assert client.get("/api/v1/platform").json()["execution_enabled"] is False
+        platform = client.get("/api/v1/platform").json()
+        assert platform["execution_enabled"] is False
+        assert platform["global_execution_limit"] == 1
 
 
 def test_unavailable_database_does_not_expose_credentials():

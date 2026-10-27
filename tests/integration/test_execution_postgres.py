@@ -98,7 +98,7 @@ async def test_competing_workers_and_create_idempotency(engine):
 
 
 async def test_fifo_scheduler_orders_trials_by_enqueue_time_and_sample(engine):
-    service = ExecutionService(engine)
+    service = ExecutionService(engine, global_execution_limit=3)
     first = request()
     first = first.model_copy(update={"trial_count": 2})
     second = request()
@@ -128,6 +128,33 @@ async def test_fifo_scheduler_orders_trials_by_enqueue_time_and_sample(engine):
             for lease in leases
         ]
     assert attempts == [0, 1, 0]
+
+
+async def test_global_capacity_is_shared_by_execution_services_and_recovery(engine):
+    first_service = ExecutionService(engine, global_execution_limit=2)
+    second_service = ExecutionService(engine, global_execution_limit=2)
+    job = await first_service.create_job(request().model_copy(update={"trial_count": 4}))
+
+    leases = await asyncio.gather(
+        *((first_service if index % 2 else second_service).claim(uuid4()) for index in range(8))
+    )
+    active = [lease for lease in leases if lease is not None]
+    assert len(active) == 2
+    assert await second_service.claim(uuid4()) is None
+
+    committed = await first_service.finish(active[0], result(job, active[0]))
+    assert committed.status == TrialStatus.COMPLETED
+    assert await second_service.claim(uuid4()) is not None
+
+    stale = active[1]
+    await expire(engine, stale)
+    # An expired lease still owns a capacity slot until PostgreSQL recovery fences it.
+    assert await first_service.claim(uuid4()) is None
+    assert await second_service.recover_expired() == 1
+    replacement = await first_service.claim(uuid4())
+    assert replacement is not None
+    assert replacement.trial_id == stale.trial_id
+    assert replacement.fencing_token == stale.fencing_token + 1
 
 
 async def test_skip_locked_claim_does_not_wait(engine):
