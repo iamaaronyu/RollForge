@@ -289,8 +289,8 @@ async def test_recovery_budget_and_service_restart(engine):
     assert (await restarted.get_job(job.job_id, job.owner_id)).trial.status == TrialStatus.FAILED
 
 
-async def test_sigkill_worker_once_recovers_and_enforces_retry_budget(engine, tmp_path):
-    """A killed real Worker process is fenced through the authenticated Hub API."""
+async def test_sigkill_scheduler_restart_recovers_and_enforces_retry_budget(engine, tmp_path):
+    """A replacement Scheduler recovers leases after a real process is SIGKILLed."""
     service = ExecutionService(engine)
     job = request(max_executions=2)
     binding = RunnableBinding(
@@ -326,11 +326,12 @@ async def test_sigkill_worker_once_recovers_and_enforces_retry_budget(engine, tm
         ),
     )
     app = create_app(settings, engine=engine)
+    processes = []
 
     async with serve_app(app) as hub_url:
         async with HubClient(hub_url, SecretStr(token)) as hub:
 
-            async def claim_then_kill():
+            async def start_scheduler():
                 process_env = {
                     "ROLLFORGE_TEST_HUB_URL": hub_url,
                     "ROLLFORGE_TEST_WORKER_TOKEN": token,
@@ -347,24 +348,46 @@ async def test_sigkill_worker_once_recovers_and_enforces_retry_budget(engine, tm
                     env=process_env,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
                     text=True,
                 )
+                processes.append(process)
                 try:
-                    line = await asyncio.wait_for(
-                        asyncio.to_thread(process.stdout.readline), timeout=10
-                    )
-                    assert line, "Worker exited before entering the test execution block"
-                    lease = LeaseIdentity.model_validate_json(line)
-                    process.kill()
-                    await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=10)
-                    return lease
-                finally:
+                    recoveries = []
+                    while True:
+                        line = await asyncio.wait_for(
+                            asyncio.to_thread(process.stdout.readline), timeout=10
+                        )
+                        if not line:
+                            detail = await asyncio.to_thread(process.stderr.read)
+                            summary = detail.splitlines()[-1] if detail else "no stderr"
+                            raise AssertionError(
+                                f"Scheduler exited before claiming the runnable Trial ({summary})"
+                            )
+                        event = json.loads(line)
+                        if event["event"] == "recovered":
+                            recoveries.append(event["count"])
+                            continue
+                        assert event["event"] == "lease"
+                        event.pop("event")
+                        return process, LeaseIdentity.model_validate(event), recoveries
+                except BaseException as exc:
                     if process.poll() is None:
                         process.kill()
                         await asyncio.to_thread(process.wait)
-                    if process.stdout:
-                        process.stdout.close()
+                    if process.stderr and isinstance(exc, TimeoutError):
+                        detail = await asyncio.to_thread(process.stderr.read)
+                        if detail:
+                            summary = detail.splitlines()[-1]
+                            raise AssertionError(
+                                f"Scheduler did not claim the Trial ({summary})"
+                            ) from None
+                    raise
+
+            async def stop(process):
+                if process.poll() is None:
+                    process.kill()
+                await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=10)
 
             async def reject_stale_finish(lease):
                 body = FinishRequest(
@@ -379,24 +402,57 @@ async def test_sigkill_worker_once_recovers_and_enforces_retry_budget(engine, tm
                     await hub.finish(body)
                 assert rejected.value.status_code == 409
 
-            first = await claim_then_kill()
-            assert first.fencing_token == 1
-            spool_lease = tmp_path / "worker-spool" / str(first.execution_id) / "lease.json"
-            assert spool_lease.is_file()
-            assert stat.S_IMODE(spool_lease.stat().st_mode) == 0o600
-            await expire(engine, first)
-            assert (await hub.recover_expired()).recovered_count == 1
+            try:
+                first_scheduler, first, recoveries = await start_scheduler()
+                assert recoveries == []
+                assert first.fencing_token == 1
+                spool_lease = tmp_path / "worker-spool" / str(first.execution_id) / "lease.json"
+                assert spool_lease.is_file()
+                assert stat.S_IMODE(spool_lease.stat().st_mode) == 0o600
+                await stop(first_scheduler)
+                await expire(engine, first)
 
-            second = await claim_then_kill()
-            assert second.trial_id == first.trial_id
-            assert second.execution_id != first.execution_id
-            assert second.fencing_token == first.fencing_token + 1
-            await reject_stale_finish(first)
+                second_scheduler, second, recoveries = await start_scheduler()
+                assert recoveries == [1]
+                assert second.trial_id == first.trial_id
+                assert second.execution_id != first.execution_id
+                assert second.fencing_token == first.fencing_token + 1
+                await stop(second_scheduler)
+                await reject_stale_finish(first)
+                await expire(engine, second)
 
-            await expire(engine, second)
-            assert (await hub.recover_expired()).recovered_count == 1
-            await reject_stale_finish(second)
-            assert await hub.claim() is None
+                final_scheduler = subprocess.Popen(
+                    [sys.executable, str(ROOT / "tests/integration/process_claim_fixture.py")],
+                    cwd=ROOT,
+                    env={
+                        "ROLLFORGE_TEST_HUB_URL": hub_url,
+                        "ROLLFORGE_TEST_WORKER_TOKEN": token,
+                        "ROLLFORGE_TEST_SPOOL": str(tmp_path / "worker-spool"),
+                        "PYTHONPATH": os.pathsep.join(
+                            filter(None, [str(ROOT), os.environ.get("PYTHONPATH", "")])
+                        ),
+                        **({"PATH": os.environ["PATH"]} if os.environ.get("PATH") else {}),
+                    },
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                )
+                processes.append(final_scheduler)
+                recovery_line = await asyncio.wait_for(
+                    asyncio.to_thread(final_scheduler.stdout.readline), timeout=10
+                )
+                recovery = json.loads(recovery_line)
+                assert recovery == {"event": "recovered", "count": 1}
+                await stop(final_scheduler)
+                await reject_stale_finish(second)
+                assert await hub.claim() is None
+            finally:
+                for process in processes:
+                    await stop(process)
+                    for stream in (process.stdout, process.stderr):
+                        if stream:
+                            stream.close()
 
     current = await service.get_job(job.job_id, job.owner_id)
     assert current.trial.status == TrialStatus.FAILED
