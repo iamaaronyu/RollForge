@@ -9,3 +9,7 @@ Viewer 投影版本升至 3。主轨迹投影仅在外部 `trajectory_path` 与�
 测试覆盖投影对 Manifest 路径的筛选、URL/越界路径脱敏、摘要读取键、缺失文件、非 JSON、大文件和对象资源关闭。真实 PostgreSQL/MinIO API 集成用例另外覆盖用户归属、Worker 拒绝、轨迹返回、路径穿越、超限及对象篡改；只有提供固定 MinIO 二进制和隔离 PostgreSQL 时才运行。不能把本机跳过的 MinIO 用例计作真实对象存储验收。
 
 本机 `make check`：**191 passed、54 skipped、1 warning**；OpenAPI 导出一致性、TypeScript 检查和 Next.js 生产构建通过。54 项跳过包含真实 PostgreSQL/MinIO 产物 API 测试，因此本切片的对象存储 API 集成断言尚未在真实 S3 兼容存储上运行；已通过的是适配器和对象读取边界单元测试。Starlette/httpx 弃用警告与本切片无关。
+
+另在 `100.106.244.122` 完成当前代码的真实 API/对象存储闭环：一次性 PostgreSQL 16 容器和隔离 schema，当前提交源码临时导入，Hub API 通过 ASGI HTTP 调用，Silo 使用随机新建 bucket。**`POSTGRES16_SILO_EXTERNAL_API=PASS`**。检查了创建与接受合成执行产物、主轨迹仅返回 Manifest 内路径、外部 JSON 轨迹读回、其他用户 404、Worker 403、路径穿越/缺失路径 404、非 JSON 415、超过 1 MiB 为 413，以及对象篡改后为 503。测试结束删除了 S3 bucket、schema、PostgreSQL 容器和临时源码；没有更改运行 Hub/Web 或业务对象。
+
+因此本功能已获得真实 PostgreSQL + Silo API 集成证据；`make check` 中的独立 MinIO fixture 仍因测试二进制未配置而跳过。当前 Linux systemd Hub/Web 仍运行先前部署版本，本提交仅在 GitHub，尚未部署到常驻服务。
