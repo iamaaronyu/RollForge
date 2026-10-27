@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import pwd
 import re
 import shutil
 import sqlite3
@@ -24,6 +25,9 @@ from sqlalchemy.engine import make_url
 
 class BackupError(Exception):
     """Safe-to-display backup/restore failure."""
+
+
+BACKUP_MOUNT = Path("/mnt/rollforge-backups")
 
 
 def sha256_file(path: Path) -> str:
@@ -52,6 +56,69 @@ def require_private_file(path: Path):
     info = path.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
         raise BackupError("私密状态文件必须是仅当前用户可访问的普通文件")
+
+
+def require_encrypted_backup_target(path: Path):
+    if not sys.platform.startswith("linux"):
+        raise BackupError("备份创建仅支持已验证的 Linux dm-crypt 挂载目标")
+    findmnt = shutil.which("findmnt")
+    lsblk = shutil.which("lsblk")
+    if not findmnt or not lsblk:
+        raise BackupError("备份创建需要 findmnt 和 lsblk 验证加密挂载")
+    try:
+        target_result = subprocess.run(
+            [findmnt, "--noheadings", "--output", "TARGET", "--target", str(path)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        source_result = subprocess.run(
+            [findmnt, "--noheadings", "--output", "SOURCE", "--target", str(path)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        raise BackupError("无法验证备份加密挂载") from None
+    if target_result.returncode or source_result.returncode:
+        raise BackupError("备份目标不是已挂载的加密文件系统")
+    target_text = target_result.stdout.strip()
+    source = source_result.stdout.strip()
+    mountpoint = Path(target_text) if target_text else Path()
+    try:
+        resolved_mountpoint = mountpoint.resolve(strict=True)
+        resolved_backup_mount = BACKUP_MOUNT.resolve(strict=True)
+        resolved_path = path.resolve(strict=True)
+    except OSError:
+        raise BackupError("备份目标或加密挂载点不存在") from None
+    if (
+        resolved_mountpoint != resolved_backup_mount
+        or not resolved_path.is_relative_to(resolved_mountpoint)
+        or not source
+    ):
+        raise BackupError("备份目标必须位于 /mnt/rollforge-backups 专用挂载点")
+    source = source.partition("[")[0]
+    try:
+        topology = subprocess.run(
+            [lsblk, "--noheadings", "--raw", "--output", "TYPE", "--inverse", "--paths", source],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        raise BackupError("无法验证备份存储设备加密层") from None
+    if topology.returncode or "crypt" not in topology.stdout.split():
+        raise BackupError("备份目标设备链未检测到 dm-crypt 加密层")
+
+
+def require_rollforge_backup_owner(path: Path):
+    try:
+        expected_uid = pwd.getpwnam("rollforge").pw_uid
+        actual_uid = path.lstat().st_uid
+    except (KeyError, OSError):
+        raise BackupError("无法验证备份目录的 rollforge 所有权") from None
+    if actual_uid != expected_uid:
+        raise BackupError("加密备份目录必须归 rollforge 用户所有")
 
 
 def validate_budget_database(path: Path):
@@ -766,6 +833,9 @@ def create_backup(destination: Path, budget_db: Path, *, quiescent: bool):
     validate_budget_database(budget_db)
     parent = destination.parent
     require_private_directory(parent)
+    if sys.platform.startswith("linux"):
+        require_rollforge_backup_owner(parent)
+    require_encrypted_backup_target(parent)
     if destination.exists() or destination.is_symlink():
         raise BackupError("备份目标必须是尚不存在的新目录")
     staging = parent / f".rollforge-backup-{uuid4().hex}"

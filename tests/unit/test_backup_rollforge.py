@@ -1,7 +1,9 @@
 import hashlib
 import json
 import sqlite3
+import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -12,7 +14,9 @@ from scripts.backup_rollforge import (
     postgres_command,
     postgres_environment,
     record_file,
+    require_encrypted_backup_target,
     require_no_active_gateway_sessions,
+    require_rollforge_backup_owner,
     require_separate_restore_targets,
     restore_budget_database,
     snapshot_sqlite,
@@ -352,12 +356,73 @@ def test_backup_uses_dedicated_read_only_object_storage_identity(tmp_path, monke
     monkeypatch.setattr("scripts.backup_rollforge.run_postgres", dump_database)
     monkeypatch.setattr("scripts.backup_rollforge.s3_client_from_environment", storage_client)
     monkeypatch.setattr("scripts.backup_rollforge.snapshot_objects", lambda _c, _b, _r: ([], []))
+    monkeypatch.setattr("scripts.backup_rollforge.require_encrypted_backup_target", lambda _p: None)
 
     manifest = create_backup(parent / "bundle", budget, quiescent=True)
 
     assert calls == ["ROLLFORGE_BACKUP_OBJECT_STORAGE"]
     assert manifest["object_bucket"] == "rollforge"
     client.close.assert_called_once_with()
+
+
+def test_backup_target_requires_dedicated_dmcrypt_mount(tmp_path, monkeypatch):
+    import scripts.backup_rollforge as backup_module
+
+    mount = tmp_path / "rollforge-backups"
+    mount.mkdir(mode=0o700)
+    monkeypatch.setattr(backup_module, "BACKUP_MOUNT", mount)
+    monkeypatch.setattr(backup_module.sys, "platform", "linux")
+    monkeypatch.setattr(backup_module.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    def run(command, **_kwargs):
+        if command[0].endswith("findmnt") and "TARGET" in command:
+            return subprocess.CompletedProcess(command, 0, f"{mount}\n", "")
+        if command[0].endswith("findmnt") and "SOURCE" in command:
+            return subprocess.CompletedProcess(
+                command, 0, "/dev/mapper/rollforge-backups[/subvol]\n", ""
+            )
+        return subprocess.CompletedProcess(command, 0, "crypt\npart\ndisk\n", "")
+
+    monkeypatch.setattr(backup_module.subprocess, "run", run)
+    require_encrypted_backup_target(mount)
+
+    def run_unencrypted(command, **_kwargs):
+        if command[0].endswith("findmnt") and "TARGET" in command:
+            return subprocess.CompletedProcess(command, 0, f"{mount}\n", "")
+        if command[0].endswith("findmnt") and "SOURCE" in command:
+            return subprocess.CompletedProcess(command, 0, "/dev/nvme0n1p1\n", "")
+        return subprocess.CompletedProcess(command, 0, "part\ndisk\n", "")
+
+    monkeypatch.setattr(backup_module.subprocess, "run", run_unencrypted)
+    with pytest.raises(BackupError, match="dm-crypt"):
+        require_encrypted_backup_target(mount)
+
+    def run_root_filesystem(command, **_kwargs):
+        if command[0].endswith("findmnt") and "TARGET" in command:
+            return subprocess.CompletedProcess(command, 0, "/\n", "")
+        if command[0].endswith("findmnt") and "SOURCE" in command:
+            return subprocess.CompletedProcess(command, 0, "/dev/nvme0n1p1\n", "")
+        return subprocess.CompletedProcess(command, 0, "crypt\n", "")
+
+    monkeypatch.setattr(backup_module.subprocess, "run", run_root_filesystem)
+    with pytest.raises(BackupError, match="专用挂载点"):
+        require_encrypted_backup_target(mount)
+
+
+def test_backup_mount_must_be_owned_by_rollforge(tmp_path, monkeypatch):
+    import scripts.backup_rollforge as backup_module
+
+    expected_uid = tmp_path.stat().st_uid
+    monkeypatch.setattr(
+        backup_module.pwd, "getpwnam", lambda name: SimpleNamespace(pw_uid=expected_uid)
+    )
+    require_rollforge_backup_owner(tmp_path)
+
+    monkeypatch.setattr(
+        backup_module.pwd, "getpwnam", lambda _name: SimpleNamespace(pw_uid=expected_uid + 1)
+    )
+    with pytest.raises(BackupError, match="归 rollforge"):
+        require_rollforge_backup_owner(tmp_path)
 
 
 def test_restore_target_must_be_separate_from_source(monkeypatch):

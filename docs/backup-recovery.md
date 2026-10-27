@@ -39,7 +39,7 @@ sudo systemd-run --wait --pipe --collect \
 
 上例以管理员身份运行，适用于容器客户端模式。若使用宿主机 PostgreSQL 客户端，可在 `systemd-run` 参数中加入 `--uid=rollforge --gid=rollforge`，使备份进程直接以服务账号运行。容器客户端模式下，命令成功后执行 `sudo chown -R rollforge:rollforge "$BACKUP_PATH"`，再按前文以 `rollforge` 身份运行 `verify`。
 
-`/mnt/rollforge-backups` 必须是已挂载的加密卷，且父目录归 `rollforge` 所有、权限 0700。预检会拒绝非私有目录、活动写入未确认的调用、缺失/损坏的 SQLite 账本和不安全对象存储 URL。创建成功后，用同一账号完整校验：
+`/mnt/rollforge-backups` 必须是已挂载的加密卷，且父目录归 `rollforge` 所有、权限 0700。Linux 创建命令会调用 `findmnt` 确认目标确实落在该专用挂载点，再调用 `lsblk` 确认设备依赖链中存在 `crypt` 类型的 dm-crypt 层；未挂载、误落到根盘或无法证明 dm-crypt 时一律拒绝。当前实现只接受 dm-crypt/LUKS 设备链，不把目录权限当作静态加密证明。预检还会拒绝非私有目录、活动写入未确认的调用、缺失/损坏的 SQLite 账本和不安全对象存储 URL。创建成功后，用同一账号完整校验：
 
 ```sh
 sudo -u rollforge /opt/rollforge/.venv/bin/python \
