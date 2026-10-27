@@ -3,6 +3,7 @@ import type { components } from "./api-types";
 
 export type JobList = components["schemas"]["JobList"];
 export type JobView = components["schemas"]["JobView"];
+export type JobAggregation = components["schemas"]["JobAggregation"];
 export type TrialView = components["schemas"]["TrialView"];
 export type ExecutionList = components["schemas"]["ExecutionList"];
 export type TrialList = components["schemas"]["TrialList"];

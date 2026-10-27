@@ -16,7 +16,15 @@ from rollforge_schemas.api import (
     RenewRequest,
 )
 from rollforge_schemas.domain import HealthResponse
-from rollforge_schemas.execution import ExecutionList, JobList, JobView, Lease, TrialList, TrialView
+from rollforge_schemas.execution import (
+    ExecutionList,
+    JobAggregation,
+    JobList,
+    JobView,
+    Lease,
+    TrialList,
+    TrialView,
+)
 from rollforge_schemas.registry import (
     AssetRevision,
     RegistryAssetList,
@@ -112,6 +120,10 @@ class HubClient:
     async def get_job(self, job_id: UUID) -> JobView:
         response = await self._request("GET", f"/api/v1/jobs/{job_id}")
         return self._decode(response, JobView)
+
+    async def aggregate_job(self, job_id: UUID) -> JobAggregation:
+        response = await self._request("GET", f"/api/v1/jobs/{job_id}/aggregation")
+        return self._decode(response, JobAggregation)
 
     async def cancel_job(self, job_id: UUID) -> JobView:
         response = await self._request("POST", f"/api/v1/jobs/{job_id}/cancel")

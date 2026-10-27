@@ -2,6 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
+from math import fsum
 from uuid import UUID, uuid4, uuid5
 
 from rollforge_schemas.domain import TrialStatus
@@ -11,12 +12,14 @@ from rollforge_schemas.execution import (
     ExecutionSnapshot,
     ExecutionStatus,
     ExecutionView,
+    JobAggregation,
     JobList,
     JobSummary,
     JobView,
     Lease,
     LeaseIdentity,
     ResultCommit,
+    RewardAggregate,
     TrialList,
     TrialView,
     validate_execution_transition,
@@ -318,6 +321,61 @@ class ExecutionService:
                 for job_id, trial, total, terminal, result in rows[:limit]
             ),
             next_cursor=rows[limit - 1][0] if len(rows) > limit else None,
+        )
+
+    async def aggregate_job(self, job_id: UUID, owner_id: UUID) -> JobAggregation | None:
+        """Summarize only each Trial's current accepted result; missing metrics stay absent."""
+        async with self.sessions() as session:
+            job = await session.scalar(
+                select(Job).where(Job.id == job_id, Job.owner_id == owner_id)
+            )
+            if job is None:
+                return None
+            rows = (
+                await session.execute(
+                    select(Trial.status, Execution.result)
+                    .outerjoin(
+                        Execution,
+                        (Execution.trial_id == Trial.id)
+                        & (Execution.fencing_token == Trial.fencing_token),
+                    )
+                    .where(Trial.job_id == job_id)
+                    .order_by(Trial.attempt_index)
+                    .limit(1000)
+                )
+            ).all()
+        rewards: dict[str, list[float]] = {}
+        completed = failed = cancelled = scored = 0
+        for status, raw_result in rows:
+            completed += status == TrialStatus.COMPLETED
+            failed += status == TrialStatus.FAILED
+            cancelled += status == TrialStatus.CANCELLED
+            if raw_result is None:
+                continue
+            result = ResultCommit.model_validate(raw_result)
+            if result.outcome != ResultOutcome.SCORED:
+                continue
+            scored += 1
+            for name, value in (result.rewards or {}).items():
+                rewards.setdefault(name, []).append(value)
+        terminal = completed + failed + cancelled
+        return JobAggregation(
+            job_id=job_id,
+            trial_count=job.trial_count,
+            terminal_trial_count=terminal,
+            completed_trial_count=completed,
+            failed_trial_count=failed,
+            cancelled_trial_count=cancelled,
+            scored_trial_count=scored,
+            rewards={
+                name: RewardAggregate(
+                    sample_count=len(values),
+                    mean=fsum(value / len(values) for value in values),
+                    minimum=min(values),
+                    maximum=max(values),
+                )
+                for name, values in sorted(rewards.items())
+            },
         )
 
     async def list_executions(self, job_id: UUID, owner_id: UUID, limit: int = 20, after: int = 0):

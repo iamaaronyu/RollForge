@@ -121,6 +121,24 @@ class JobSummary(Contract):
     terminal_trial_count: int = Field(ge=0, le=1000)
 
 
+class RewardAggregate(Contract):
+    sample_count: int = Field(ge=1, le=1000)
+    mean: float
+    minimum: float
+    maximum: float
+
+
+class JobAggregation(Contract):
+    job_id: UUID
+    trial_count: int = Field(ge=1, le=1000)
+    terminal_trial_count: int = Field(ge=0, le=1000)
+    completed_trial_count: int = Field(ge=0, le=1000)
+    failed_trial_count: int = Field(ge=0, le=1000)
+    cancelled_trial_count: int = Field(ge=0, le=1000)
+    scored_trial_count: int = Field(ge=0, le=1000)
+    rewards: dict[str, RewardAggregate]
+
+
 class JobList(Contract):
     items: tuple[JobSummary, ...]
     next_cursor: UUID | None = None

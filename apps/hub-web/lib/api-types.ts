@@ -73,6 +73,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/jobs/{job_id}/aggregation": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Aggregate Job */
+        readonly get: operations["aggregate_job"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/jobs/{job_id}/cancel": {
         readonly parameters: {
             readonly query?: never;
@@ -604,6 +621,30 @@ export interface components {
             /** Version */
             readonly version: string;
         };
+        /** JobAggregation */
+        readonly JobAggregation: {
+            /** Cancelled Trial Count */
+            readonly cancelled_trial_count: number;
+            /** Completed Trial Count */
+            readonly completed_trial_count: number;
+            /** Failed Trial Count */
+            readonly failed_trial_count: number;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            readonly job_id: string;
+            /** Rewards */
+            readonly rewards: {
+                readonly [key: string]: components["schemas"]["RewardAggregate"];
+            };
+            /** Scored Trial Count */
+            readonly scored_trial_count: number;
+            /** Terminal Trial Count */
+            readonly terminal_trial_count: number;
+            /** Trial Count */
+            readonly trial_count: number;
+        };
         /** JobCreateRequest */
         readonly JobCreateRequest: {
             /**
@@ -870,6 +911,17 @@ export interface components {
             readonly id: string;
             /** Revision */
             readonly revision: number;
+        };
+        /** RewardAggregate */
+        readonly RewardAggregate: {
+            /** Maximum */
+            readonly maximum: number;
+            /** Mean */
+            readonly mean: number;
+            /** Minimum */
+            readonly minimum: number;
+            /** Sample Count */
+            readonly sample_count: number;
         };
         /** RunnableBinding */
         readonly RunnableBinding: {
@@ -1414,6 +1466,82 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    readonly aggregate_job: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly job_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["JobAggregation"];
                 };
             };
             /** @description Unauthorized */

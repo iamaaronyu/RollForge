@@ -25,6 +25,7 @@ from rollforge_schemas.api import (
 from rollforge_schemas.execution import (
     CreateJob,
     ExecutionList,
+    JobAggregation,
     JobList,
     JobView,
     Lease,
@@ -195,6 +196,19 @@ async def get_job(job_id: UUID, identity: User, store: Store):
     if job is None:
         raise ApiFailure(404, ErrorCode.NOT_FOUND, "Job 不存在")
     return job
+
+
+@router.get(
+    "/jobs/{job_id}/aggregation",
+    response_model=JobAggregation,
+    tags=["jobs"],
+    operation_id="aggregate_job",
+)
+async def aggregate_job(job_id: UUID, identity: User, store: Store):
+    result = await store.aggregate_job(job_id, identity.subject_id)
+    if result is None:
+        raise ApiFailure(404, ErrorCode.NOT_FOUND, "Job 不存在")
+    return result
 
 
 @router.post(

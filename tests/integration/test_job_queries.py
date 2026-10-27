@@ -7,11 +7,13 @@ import pytest
 from rollforge_api.execution_service import ExecutionService
 from rollforge_api.models import Execution
 from rollforge_hub_sdk.client import HubError
-from rollforge_schemas.api import ApprovedTaskBinding
+from rollforge_schemas.api import ApprovedTaskBinding, FinishRequest
 from rollforge_schemas.domain import RevisionRef
+from rollforge_schemas.execution import FailureReason, ResultCommit
 from rollforge_schemas.runnable import RunnableBinding
+from rollforge_schemas.runtime import ResultOutcome
 from sqlalchemy import func, update
-from test_job_api_postgres import clients, job_request
+from test_job_api_postgres import clients, job_request, reference
 
 
 async def test_job_list_owner_pagination_and_role(engine):
@@ -61,6 +63,71 @@ async def test_execution_history_owner_pagination_and_no_worker_identity(engine)
             with pytest.raises(HubError) as missing:
                 await client.list_executions(job_id)
             assert missing.value.status_code == 404
+
+
+async def test_job_aggregation_uses_current_scored_trials_and_metric_coverage(engine):
+    async with clients(engine) as (_app, sdk, _raw, _ids, _tokens):
+        request = job_request().model_copy(update={"trial_count": 3})
+        job = await sdk["user"].create_job(request)
+        expired = await sdk["worker"].claim()
+        assert expired is not None
+        async with engine.begin() as connection:
+            await connection.execute(
+                update(Execution)
+                .where(Execution.id == expired.execution_id)
+                .values(expires_at=func.clock_timestamp() - timedelta(seconds=1))
+            )
+        assert (await sdk["worker"].recover_expired()).recovered_count == 1
+        outcomes = [
+            (ResultOutcome.SCORED, None, {"reward": 0.0}),
+            (ResultOutcome.SCORED, None, {"reward": 0.8, "quality": 1.0}),
+            (ResultOutcome.RUNTIME_FAILED, FailureReason.AGENT_ERROR, None),
+        ]
+        trial_pages = await sdk["user"].list_trials(job.job_id, limit=3)
+        attempt_by_trial = {trial.trial_id: trial.attempt_index for trial in trial_pages.items}
+        assert len(attempt_by_trial) == 3
+        retried = False
+        for _ in outcomes:
+            lease = await sdk["worker"].claim()
+            assert lease is not None and lease.job_id == job.job_id
+            attempt_index = attempt_by_trial[lease.trial_id]
+            if attempt_index == 0:
+                assert lease.trial_id == expired.trial_id
+                assert lease.execution_id != expired.execution_id
+                retried = True
+            outcome, reason, rewards = outcomes[attempt_index]
+            result = ResultCommit(
+                outcome=outcome,
+                failure_reason=reason,
+                rewards=rewards,
+                manifest_key=(
+                    f"jobs/{job.job_id}/trials/{lease.trial_id}/executions/"
+                    f"{lease.execution_id}/manifest.json"
+                ),
+                manifest_digest="sha256:" + "a" * 64,
+            )
+            await sdk["worker"].finish(FinishRequest(lease=reference(lease), result=result))
+        assert retried
+
+        summary = await sdk["user"].aggregate_job(job.job_id)
+        assert summary.trial_count == summary.terminal_trial_count == 3
+        assert summary.completed_trial_count == 2
+        assert summary.failed_trial_count == 1
+        assert summary.cancelled_trial_count == 0
+        assert summary.scored_trial_count == 2
+        assert summary.rewards["reward"].sample_count == 2
+        assert summary.rewards["reward"].mean == 0.4
+        assert summary.rewards["reward"].minimum == 0.0
+        assert summary.rewards["reward"].maximum == 0.8
+        assert summary.rewards["quality"].sample_count == 1
+        assert summary.rewards["quality"].mean == 1.0
+        for client, job_id in ((sdk["other_user"], job.job_id), (sdk["user"], uuid4())):
+            with pytest.raises(HubError) as missing:
+                await client.aggregate_job(job_id)
+            assert missing.value.status_code == 404
+        with pytest.raises(HubError) as forbidden:
+            await sdk["worker"].aggregate_job(job.job_id)
+        assert forbidden.value.status_code == 403
 
 
 async def test_approved_task_selection_uses_server_snapshot(engine):

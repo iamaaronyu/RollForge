@@ -31,7 +31,7 @@ Next 变量通过启动环境或 `apps/hub-web/.env.local` 配置，不能假设
 
 详情中的已提交 Execution 可进入 `/jobs/{job_id}/executions/{execution_id}`，查看 Manifest 文件索引并选择文本。索引先确认 PostgreSQL 所有权与已接受 ResultCommit，再核对远端 Manifest 摘要和执行作用域；未提交或跨用户执行为 404。预览仅接受索引中存在的文件路径，读回 SHA256/大小一致后以 UTF-8 文本显示，最多 1 MiB，二进制拒绝。原始 HTML 作为纯文本显示，不作为网页执行；API 附带 nosniff、no-store 与限制 CSP。
 
-索引核验不代表再次读回全部文件；每次预览和下载单独核验内容。下载仅允许 Manifest 中已登记的文件，完整校验摘要，单文件上限 64 MiB，并通过同源 Hub 代理返回附件；浏览器不接触 Hub token、S3 凭证或对象地址。正式提交仍调用完整 verify，未降低验收要求。统计聚合仍待开发；usage/reasoning 缺失保持未知。
+索引核验不代表再次读回全部文件；每次预览和下载单独核验内容。下载仅允许 Manifest 中已登记的文件，完整校验摘要，单文件上限 64 MiB，并通过同源 Hub 代理返回附件；浏览器不接触 Hub token、S3 凭证或对象地址。正式提交仍调用完整 verify，未降低验收要求。Job 详情显示有效评分 Trial 数及各 reward 指标的平均值、最小值、最大值和覆盖数；零分纳入计算，指标缺失不补零，失败/取消不计入评分汇总。统计只读取每个逻辑 Trial 当前 fencing token 对应的已接受结果，Retry 不重复计数。
 
 
 ## 主轨迹时间线

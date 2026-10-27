@@ -421,6 +421,71 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "JobAggregation": {
+        "additionalProperties": false,
+        "properties": {
+          "cancelled_trial_count": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Cancelled Trial Count",
+            "type": "integer"
+          },
+          "completed_trial_count": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Completed Trial Count",
+            "type": "integer"
+          },
+          "failed_trial_count": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Failed Trial Count",
+            "type": "integer"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "rewards": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RewardAggregate"
+            },
+            "title": "Rewards",
+            "type": "object"
+          },
+          "scored_trial_count": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Scored Trial Count",
+            "type": "integer"
+          },
+          "terminal_trial_count": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Terminal Trial Count",
+            "type": "integer"
+          },
+          "trial_count": {
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Trial Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id",
+          "trial_count",
+          "terminal_trial_count",
+          "completed_trial_count",
+          "failed_trial_count",
+          "cancelled_trial_count",
+          "scored_trial_count",
+          "rewards"
+        ],
+        "title": "JobAggregation",
+        "type": "object"
+      },
       "JobCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1040,6 +1105,37 @@
           "digest"
         ],
         "title": "RevisionRef",
+        "type": "object"
+      },
+      "RewardAggregate": {
+        "additionalProperties": false,
+        "properties": {
+          "maximum": {
+            "title": "Maximum",
+            "type": "number"
+          },
+          "mean": {
+            "title": "Mean",
+            "type": "number"
+          },
+          "minimum": {
+            "title": "Minimum",
+            "type": "number"
+          },
+          "sample_count": {
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Sample Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sample_count",
+          "mean",
+          "minimum",
+          "maximum"
+        ],
+        "title": "RewardAggregate",
         "type": "object"
       },
       "RunnableBinding": {
@@ -2053,6 +2149,104 @@
           }
         ],
         "summary": "Get Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/{job_id}/aggregation": {
+      "get": {
+        "operationId": "aggregate_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAggregation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Aggregate Job",
         "tags": [
           "jobs"
         ]

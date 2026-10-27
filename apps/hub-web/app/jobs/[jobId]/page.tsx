@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { experimental, hub, HubProblem, labels, message, resultText, validId, type JobView, type ExecutionList, type TrialList } from "../../../lib/hub";
+import { experimental, hub, HubProblem, labels, message, resultText, validId, type JobView, type JobAggregation, type ExecutionList, type TrialList } from "../../../lib/hub";
 import { CancelJobButton, CancelTrialButton } from "./cancel-buttons";
 
 export const dynamic = "force-dynamic";
@@ -13,13 +13,14 @@ export default async function Detail({ params, searchParams }: {
 async function renderDetail(params: Promise<{ jobId: string }>, searchParams: Promise<{ after?: string; trialAfter?: string; error?: string; notice?: string }>) {
   const { jobId } = await params; const { after, trialAfter, error, notice } = await searchParams;
   if (!validId(jobId)) notFound();
-  let job: JobView; let executions: ExecutionList; let trials: TrialList;
+  let job: JobView; let executions: ExecutionList; let trials: TrialList; let aggregation: JobAggregation;
   try {
     if ((after && !/^\d{1,10}$/.test(after)) || (trialAfter && !/^\d{1,3}$/.test(trialAfter))) throw new Error();
-    [job, executions, trials] = await Promise.all([
+    [job, executions, trials, aggregation] = await Promise.all([
       hub<JobView>(`/api/v1/jobs/${jobId}`),
       hub<ExecutionList>(`/api/v1/jobs/${jobId}/executions?limit=20&after=${after ?? 0}`),
       hub<TrialList>(`/api/v1/jobs/${jobId}/trials?limit=20&after=${trialAfter ?? 0}`),
+      hub<JobAggregation>(`/api/v1/jobs/${jobId}/aggregation`),
     ]);
   } catch (error) {
     if (error instanceof HubProblem && error.status === 404) notFound();
@@ -34,6 +35,13 @@ async function renderDetail(params: Promise<{ jobId: string }>, searchParams: Pr
       <dl><dt>Task Revision</dt><dd>{job.snapshot.task.id} · v{job.snapshot.task.revision}</dd><dt>执行预算</dt><dd>每个样本最多 {job.snapshot.max_executions} 次 · 超时 {job.snapshot.timeout_sec} 秒</dd></dl>
       <p className="note">样本序号 0 至 {job.trial_count - 1} 在创建时确定。0 分是有效评分；Retry 保留同一 Trial，仅创建新的 Execution。</p>
       {experimental() && job.terminal_trial_count < job.trial_count && <CancelJobButton jobId={jobId} />}
+    </section>
+    <section className="panel"><h2>多样本评分汇总</h2>
+      <p>{aggregation.scored_trial_count} 个样本有有效评分；终态：完成 {aggregation.completed_trial_count}、失败 {aggregation.failed_trial_count}、取消 {aggregation.cancelled_trial_count}。</p>
+      {Object.keys(aggregation.rewards).length ? <div className="table-wrap"><table><thead><tr><th>指标</th><th>平均值</th><th>最小值</th><th>最大值</th><th>覆盖数</th></tr></thead><tbody>
+        {Object.entries(aggregation.rewards).map(([name, metric]) => <tr key={name}><td>{name}</td><td>{metric.mean}</td><td>{metric.minimum}</td><td>{metric.maximum}</td><td>{metric.sample_count} / {aggregation.scored_trial_count}</td></tr>)}
+      </tbody></table></div> : <p>目前没有可汇总的评分指标。缺失值保持未知，不按零分处理。</p>}
+      <p className="note">每个逻辑 Trial 只计入当前已接受结果；Retry 不会重复计数。各指标只对实际提供该指标的评分样本计算平均值，零分作为有效数值纳入。</p>
     </section>
     <section className="panel"><h2>逻辑 Trial 样本</h2>
       <div className="table-wrap"><table><thead><tr><th>样本序号</th><th>Trial</th><th>状态</th><th>执行序号</th><th>结果</th><th>操作</th></tr></thead><tbody>
