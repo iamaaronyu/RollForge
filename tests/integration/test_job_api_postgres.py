@@ -1,7 +1,11 @@
 import hashlib
 import json
+import os
 import secrets
-from asyncio import gather
+import subprocess
+import sys
+import time
+from asyncio import gather, sleep
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
@@ -334,6 +338,97 @@ async def test_hundred_trial_job_paginates_and_claims_with_global_capacity(engin
         assert {lease.trial_id for lease in leases} == {trial.trial_id for trial in trials}
         assert all(lease.snapshot == body.snapshot for lease in leases)
         assert await sdk["worker"].claim() is None
+
+
+async def test_postgres_global_capacity_is_shared_across_processes(engine, tmp_path):
+    async with clients(engine, global_execution_limit=1) as (_, sdk, _, _, _):
+        await sdk["user"].create_job(job_request().model_copy(update={"trial_count": 2}))
+        async with engine.connect() as connection:
+            schema = await connection.scalar(text("SELECT current_schema()"))
+
+        release = tmp_path / "release-claims"
+        ready_dir = tmp_path / "ready"
+        ready_dir.mkdir()
+        script = """
+import asyncio
+import os
+import time
+from pathlib import Path
+from uuid import UUID
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+from rollforge_api.execution_service import ExecutionService
+
+release = Path(os.environ["ROLLFORGE_PROCESS_TEST_RELEASE"])
+
+async def main():
+    worker_id = os.environ["ROLLFORGE_PROCESS_TEST_WORKER_ID"]
+    engine = create_async_engine(
+        os.environ["ROLLFORGE_TEST_DATABASE_URL"],
+        connect_args={
+            "server_settings": {"search_path": os.environ["ROLLFORGE_PROCESS_TEST_SCHEMA"]}
+        },
+    )
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+        ready_path = Path(os.environ["ROLLFORGE_PROCESS_TEST_READY_DIR"]) / worker_id
+        ready_path.touch()
+        deadline = time.monotonic() + 15
+        while not release.exists():
+            if time.monotonic() >= deadline:
+                raise SystemExit("claim barrier timed out")
+            await asyncio.sleep(0.01)
+        lease = await ExecutionService(engine, global_execution_limit=1).claim(
+            UUID(worker_id)
+        )
+        print("CLAIMED" if lease else "EMPTY")
+    finally:
+        await engine.dispose()
+
+asyncio.run(main())
+"""
+        processes = []
+        for _ in range(2):
+            env = os.environ.copy()
+            env["ROLLFORGE_PROCESS_TEST_RELEASE"] = str(release)
+            env["ROLLFORGE_PROCESS_TEST_SCHEMA"] = schema
+            env["ROLLFORGE_PROCESS_TEST_READY_DIR"] = str(ready_dir)
+            env["ROLLFORGE_PROCESS_TEST_WORKER_ID"] = str(uuid4())
+            processes.append(
+                subprocess.Popen(
+                    [sys.executable, "-c", script],
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+            )
+        deadline = time.monotonic() + 20
+        while len(list(ready_dir.iterdir())) != len(processes):
+            if time.monotonic() >= deadline:
+                for process in processes:
+                    if process.poll() is None:
+                        process.kill()
+                outputs = [process.communicate(timeout=5) for process in processes]
+                raise AssertionError("claim processes failed to reach database barrier")
+            await sleep(0.01)
+        release.touch()
+        try:
+            outputs = [process.communicate(timeout=30) for process in processes]
+        except subprocess.TimeoutExpired:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+            outputs = [process.communicate(timeout=5) for process in processes]
+            raise AssertionError("claim processes failed to finish after barrier") from None
+        assert [process.returncode for process in processes] == [0, 0], outputs
+        assert sorted(stdout.strip() for stdout, _ in outputs) == ["CLAIMED", "EMPTY"]
+        async with engine.connect() as connection:
+            running = await connection.scalar(
+                select(func.count(Execution.id)).where(Execution.status == ExecutionStatus.RUNNING)
+            )
+        assert running == 1
 
 
 async def test_worker_recovery_api_requeues_only_expired_leases(engine):

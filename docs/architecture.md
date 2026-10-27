@@ -4,7 +4,7 @@ Portal → Hub API → Job/Trial/Execution → Scheduler → Worker → Harbor �
 
 Hub 首先采用模块化应用。PostgreSQL 管理状态与租约，Redis 用于通知和缓存，故障后应能从 PostgreSQL 恢复。Harbor 管理 Sandbox 生命周期，Provider 提供配置与能力描述，不在 Harbor 外重复创建 Sandbox。
 
-Job 冻结一个 ExecutionSnapshot，并可确定性展开 1–1000 个逻辑 Trial；attempt_index 标识同配置下的独立样本序号。Retry 保留 Trial，创建新 Execution，不增加评测样本数。Execution 具有 Job 内单调领取序号用于稳定历史分页，并携带 fencing token，只有当前执行者可最终提交。PostgreSQL 事务租约服务覆盖领取、续租、幂等提交和有界过期回收。持续调度进程以有限并发轮询 FIFO Trial 队列，通过 Worker 鉴权 API 回收过期租约；Hub 领取事务以 PostgreSQL advisory lock 对正在运行的 Execution 计数，执行 `ROLLFORGE_GLOBAL_EXECUTION_LIMIT` 全局上限（默认 1），过期租约在回收前继续占用容量。单 Trial 与 Registry 绑定双 Trial 真实主链已在受限环境验收；跨 Hub 进程竞争、双 Worker Harbor/E2B 运行和进程/主机恢复仍待真实验收。
+Job 冻结一个 ExecutionSnapshot，并可确定性展开 1–1000 个逻辑 Trial；attempt_index 标识同配置下的独立样本序号。Retry 保留 Trial，创建新 Execution，不增加评测样本数。Execution 具有 Job 内单调领取序号用于稳定历史分页，并携带 fencing token，只有当前执行者可最终提交。PostgreSQL 事务租约服务覆盖领取、续租、幂等提交和有界过期回收。持续调度进程以有限并发轮询 FIFO Trial 队列，通过 Worker 鉴权 API 回收过期租约；Hub 领取事务以 PostgreSQL advisory lock 对正在运行的 Execution 计数，执行 `ROLLFORGE_GLOBAL_EXECUTION_LIMIT` 全局上限（默认 1），过期租约在回收前继续占用容量。同进程及独立 OS 进程的真实 PostgreSQL 容量竞争已通过；单 Trial 与 Registry 绑定双 Trial 真实主链已在受限环境验收。双 Worker Harbor/E2B 运行、两个 Hub HTTP 服务竞争和进程/主机恢复仍待真实验收。
 
 USER 可取消单个 Trial 或整个 Job。取消在 PostgreSQL 事务中锁定 Trial 与当前 Execution，并按状态机将其置为 CANCELLED；完成、续租与取消并发时由相同 Trial 锁确定唯一终态。Worker 在下次续租时发现租约撤销，终止 Runtime 并等待 Harbor 清理；真实 Sandbox 取消时延和强制中断恢复仍待验收。
 
